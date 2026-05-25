@@ -10,25 +10,33 @@
   --border: #1f1d1b;
   --danger: #ca3431;
 
-  /* Cores das classificações */
-  --c-brilliant:  #1baca6;
+  /* Cores das classificações (alinhadas ao Game Review do chess.com) */
+  --c-brilliant:  #26c2a3;
   --c-great:      #5c8bb0;
   --c-best:       #81b64c;
-  --c-excellent:  #9bbf6a;
-  --c-good:       #b5c98c;
+  --c-excellent:  #95bb5a;
+  --c-good:       #b0c98c;
   --c-book:       #a88865;
-  --c-inaccuracy: #f7c252;
-  --c-mistake:    #f29e3a;
+  --c-inaccuracy: #f4bf3f;
+  --c-mistake:    #ef9234;
   --c-blunder:    #ca3431;
-  --c-miss:       #ee7268;
+  --c-miss:       #e0688a;
 
   /* Highlights do tabuleiro */
   --hl-last:    rgba(255, 217, 87, 0.35);   /* amarelo translúcido estilo Lichess */
   --hl-arrow-good: #81b64c;
   --hl-arrow-bad:  #ca3431;
+
+  /* Largura máxima dos painéis centrais (tabuleiro, gráfico, engine). */
+  --panel-max: 560px;
+  /* Elevação dos cards (sombra sutil estilo chess.com). */
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.18);
+  --radius: 10px;
 }
 
 * { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
@@ -38,28 +46,37 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;        /* nada de scroll horizontal acidental no mobile */
 }
 
+img, svg, canvas { max-width: 100%; }
+
 header {
-  padding: 16px 24px;
+  padding: 14px 24px;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.25);
   display: flex;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 6px 16px;
 }
 
 header h1 {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   color: var(--accent);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 .tagline {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.9rem;
-  flex: 1;
+  flex: 1 1 200px;
 }
 
 .badge {
@@ -75,7 +92,8 @@ header h1 {
 main {
   flex: 1;
   display: grid;
-  grid-template-columns: 340px 1fr 320px;
+  /* minmax(0,1fr) deixa a coluna central encolher sem empurrar o layout. */
+  grid-template-columns: 340px minmax(0, 1fr) 320px;
   gap: 16px;
   padding: 16px;
   max-width: 1500px;
@@ -83,11 +101,19 @@ main {
   width: 100%;
 }
 
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
 .card {
   background: var(--bg-card);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 16px;
-  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: var(--shadow-card);
 }
 
 .card h2 {
@@ -142,14 +168,25 @@ button {
   background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 8px 14px;
-  border-radius: 4px;
+  padding: 9px 14px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.12s ease, transform 0.05s ease, box-shadow 0.12s ease;
 }
 button:hover { background: #4a4744; }
-button.primary { background: var(--accent); color: white; border-color: var(--accent-dark); }
-button.primary:hover { background: var(--accent-dark); }
+button:active { transform: translateY(1px); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent-dark);
+  font-weight: 600;
+  box-shadow: 0 2px 0 var(--accent-dark);
+}
+button.primary:hover { background: #8cc257; }
+button.primary:active { box-shadow: none; }
 button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 button.danger:hover { background: var(--danger); color: white; }
 
@@ -198,20 +235,25 @@ button.danger:hover { background: var(--danger); color: white; }
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
 }
 
 .board-wrap {
   display: flex;
   align-items: stretch;
   gap: 8px;
+  width: 100%;
+  max-width: var(--panel-max);
 }
 
 /* Eval bar vertical (esquerda do tabuleiro) */
 .eval-bar {
   position: relative;
-  width: 28px;
+  width: 24px;
+  flex: 0 0 24px;
   background: white; /* parte das brancas */
-  border-radius: 4px;
+  border-radius: 5px;
   overflow: hidden;
 }
 .eval-bar-black {
@@ -239,8 +281,12 @@ button.danger:hover { background: var(--danger); color: white; }
 
 .board-container {
   position: relative;
-  width: 480px;
-  height: 480px;
+  flex: 1 1 auto;
+  min-width: 0;            /* permite encolher dentro do flex (mobile) */
+  aspect-ratio: 1 / 1;     /* mantém o tabuleiro quadrado em qualquer largura */
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
 }
 #board { width: 100%; height: 100%; }
 
@@ -278,19 +324,29 @@ button.danger:hover { background: var(--danger); color: white; }
 .controls {
   display: flex;
   gap: 8px;
+  width: 100%;
+  max-width: var(--panel-max);
+  justify-content: center;
 }
 .controls button {
-  font-size: 1.2rem;
-  padding: 6px 14px;
+  font-size: 1.15rem;
+  min-width: 52px;
+  min-height: 44px;          /* alvo de toque confortável */
+  flex: 1 1 auto;
+  max-width: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #move-info {
   width: 100%;
-  max-width: 520px;
+  max-width: var(--panel-max);
   min-height: 60px;
   padding: 12px;
   background: var(--bg-card);
-  border-radius: 6px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.04);
   text-align: center;
 }
 
@@ -320,10 +376,11 @@ button.danger:hover { background: var(--danger); color: white; }
 
 .chart-wrapper {
   width: 100%;
-  max-width: 520px;
+  max-width: var(--panel-max);
   height: 140px;
   background: var(--bg-card);
-  border-radius: 6px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.04);
   padding: 8px;
 }
 
@@ -480,14 +537,16 @@ footer a { color: var(--accent); }
 
 .explore-banner {
   width: 100%;
-  max-width: 520px;
+  max-width: var(--panel-max);
   padding: 8px 12px;
   background: linear-gradient(90deg, #1baca6 0%, #5c8bb0 100%);
   color: white;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.9rem;
   font-weight: 600;
-  display: flex !important;
+  /* Visibilidade é controlada pelo app.js via style.display (none/flex).
+     Nada de !important aqui, senão não dá pra esconder. */
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -501,7 +560,7 @@ footer a { color: var(--accent); }
 
 .card.live-engine {
   width: 100%;
-  max-width: 520px;
+  max-width: var(--panel-max);
   margin: 0;
 }
 .live-engine-head {
@@ -564,6 +623,63 @@ footer a { color: var(--accent); }
   padding: 2px 6px;
 }
 
+/* ===== Scrollbars (tema escuro) ===== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-elevated) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: #4a4744; }
+
+/* ============================================================
+   Responsivo
+   ============================================================ */
+
+/* Tablet e abaixo: empilha em coluna única e REORDENA pro fluxo natural de uso:
+   importar → tabuleiro → lances → resumo/coach. O `display: contents` faz os
+   cards da sidebar virarem itens diretos do main, então o `order` funciona. */
 @media (max-width: 1100px) {
-  main { grid-template-columns: 1fr; }
+  main {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .sidebar { display: contents; }
+
+  #import-card   { order: 1; }
+  .board-section { order: 2; }
+  .moves-list    { order: 3; max-height: none; }
+  #opening-card  { order: 4; }
+  #summary-card  { order: 5; }
+  #coach-card    { order: 6; }
+
+  /* No empilhado, tabuleiro e painéis podem ocupar um pouco mais. */
+  :root { --panel-max: 640px; }
+  .board-section { align-items: center; }
+}
+
+/* Celular: aperta espaçamentos, esconde a tagline, alvos de toque maiores. */
+@media (max-width: 600px) {
+  header { padding: 12px 16px; }
+  header h1 { font-size: 1.3rem; }
+  .tagline { display: none; }
+
+  main { padding: 12px; gap: 12px; }
+  .card { padding: 13px; }
+
+  .tab-btn { padding: 10px 10px; font-size: 0.9rem; }
+
+  .eval-bar { width: 18px; flex-basis: 18px; }
+
+  /* Acurácia lado a lado continua, mas com fonte um tiquinho menor. */
+  .player-acc .acc { font-size: 1.4rem; }
+
+  /* Controles ocupam a largura toda, botões grandes pro dedo. */
+  .controls button { max-width: none; min-height: 46px; }
 }

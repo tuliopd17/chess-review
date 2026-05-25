@@ -81,7 +81,6 @@ function bootApp() {
   initImportButtons();
   initHistory();
   initLiveEngine();
-  checkHealth();
 }
 document.addEventListener("crBoardReady", bootApp);
 window.addEventListener("DOMContentLoaded", () => {
@@ -249,7 +248,6 @@ function initHistory() {
    ============================================================ */
 
 async function initLiveEngine() {
-  const badge = document.getElementById("engine-status");
   const mpvSel = document.getElementById("engine-multipv");
   const dSel = document.getElementById("engine-depth-sel");
 
@@ -269,12 +267,7 @@ async function initLiveEngine() {
     state.engine = new BrowserEngine();
     await state.engine.ready();
     state.engineReady = true;
-    badge.textContent = "✓ Stockfish WASM";
-    badge.className = "badge badge-ok";
   } catch (e) {
-    badge.textContent = "✗ falhou ao carregar";
-    badge.className = "badge badge-error";
-    badge.title = String(e);
     console.warn("Engine WASM falhou:", e);
   }
 }
@@ -437,29 +430,6 @@ function renderEngineArrow(info) {
   }
   const uci = info.pv[0];
   state.board.drawEngineArrow(uci.slice(0, 2), uci.slice(2, 4));
-}
-
-// ============================================================
-// Health
-// ============================================================
-async function checkHealth() {
-  const badge = document.getElementById("health-badge");
-  try {
-    const r = await fetch("/api/health");
-    const data = await r.json();
-    if (data.ok) {
-      badge.textContent = data.stockfish_wasm_ready
-        ? "✓ backend pronto · WASM cacheado"
-        : "✓ backend pronto · baixando WASM…";
-      badge.className = "badge badge-ok";
-    } else {
-      badge.textContent = "✗ backend reportou problema";
-      badge.className = "badge badge-error";
-    }
-  } catch (e) {
-    badge.textContent = "✗ backend offline";
-    badge.className = "badge badge-error";
-  }
 }
 
 // ============================================================

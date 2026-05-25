@@ -1,60 +1,69 @@
-/* Ícones das classificações de lances, inspirados no chess.com.
- * Cada função retorna um SVG string. Usamos isso tanto na lista de lances
- * quanto como overlay no tabuleiro (canto superior direito da casa de destino).
+/* Ícones das classificações de lances, no estilo "badge" do Game Review do
+ * chess.com. Cada função retorna um SVG string (usado na lista de lances, no
+ * card de resumo e no card do coach).
+ *
+ * Design: disco colorido sólido + um brilho branco sutil no topo (profundidade)
+ * + glifo branco nítido. Sem <defs>/gradientes com id (evita colisão quando
+ * vários ícones são injetados como innerHTML na mesma página).
  */
 
+const CLS_COLORS = {
+  brilliant:  "#26c2a3",
+  great:      "#5c8bb0",
+  best:       "#81b64c",
+  excellent:  "#95bb5a",
+  good:       "#b0c98c",
+  book:       "#a88865",
+  inaccuracy: "#f4bf3f",
+  mistake:    "#ef9234",
+  blunder:    "#ca3431",
+  miss:       "#e0688a",
+};
+
+// Disco com brilho — base de todos os ícones.
+function disc(color) {
+  return `<circle cx="12" cy="12" r="11" fill="${color}"/>` +
+         `<circle cx="12" cy="9.5" r="8" fill="#ffffff" opacity="0.16"/>`;
+}
+
+// Texto branco centralizado (para ! ? etc.).
+function glyphText(txt, fontSize) {
+  return `<text x="12" y="12" text-anchor="middle" dominant-baseline="central" ` +
+         `font-family="-apple-system, 'Segoe UI', Roboto, sans-serif" ` +
+         `font-size="${fontSize}" font-weight="800" fill="#ffffff">${txt}</text>`;
+}
+
+// Checkmark branco (espessura ajustável).
+function glyphCheck(width) {
+  return `<path d="M7 12.3l3.1 3.1L17 8.4" fill="none" stroke="#ffffff" ` +
+         `stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+
+function svg(inner, size) {
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" ` +
+         `xmlns="http://www.w3.org/2000/svg" style="display:block">${inner}</svg>`;
+}
+
 const CLASS_ICONS = {
-  brilliant: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#1baca6"/>
-      <text x="12" y="16" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="white">!!</text>
-    </svg>`,
-  great: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#5c8bb0"/>
-      <text x="12" y="16" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="white">!</text>
-    </svg>`,
-  best: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#81b64c"/>
-      <path d="M7 12.5l3 3 7-7" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>`,
-  excellent: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#9bbf6a"/>
-      <path d="M7 12.5l3 3 7-7" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>`,
-  good: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#b5c98c"/>
-      <circle cx="12" cy="12" r="3" fill="white"/>
-    </svg>`,
-  book: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#a88865"/>
-      <rect x="7" y="7" width="10" height="10" rx="1" fill="white"/>
-      <line x1="12" y1="7" x2="12" y2="17" stroke="#a88865" stroke-width="1"/>
-    </svg>`,
-  inaccuracy: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#f7c252"/>
-      <text x="12" y="16" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="white">?!</text>
-    </svg>`,
-  mistake: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#f29e3a"/>
-      <text x="12" y="16" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="white">?</text>
-    </svg>`,
-  blunder: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#ca3431"/>
-      <text x="12" y="16" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="bold" fill="white">??</text>
-    </svg>`,
-  miss: (size = 20) => `
-    <svg viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="11" fill="#ee7268"/>
-      <text x="12" y="16" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="bold" fill="white">X</text>
-    </svg>`,
+  brilliant: (size = 20) => svg(disc(CLS_COLORS.brilliant) + glyphText("!!", 11), size),
+  great:     (size = 20) => svg(disc(CLS_COLORS.great)     + glyphText("!", 13), size),
+  best:      (size = 20) => svg(disc(CLS_COLORS.best)      + glyphCheck(2.6), size),
+  excellent: (size = 20) => svg(disc(CLS_COLORS.excellent) + glyphCheck(2.2), size),
+  good: (size = 20) => svg(
+    disc(CLS_COLORS.good) +
+    `<circle cx="12" cy="12" r="3.1" fill="#ffffff"/>`, size),
+  book: (size = 20) => svg(
+    disc(CLS_COLORS.book) +
+    // Livro aberto (duas páginas) branco com vinco central.
+    `<path d="M12 8.1C10.5 7.2 8.8 6.9 7 6.9v9c1.8 0 3.5.3 5 1.2 1.5-.9 3.2-1.2 5-1.2v-9c-1.8 0-3.5.3-5 1.2z" fill="#ffffff"/>` +
+    `<line x1="12" y1="8.1" x2="12" y2="17.1" stroke="${CLS_COLORS.book}" stroke-width="1.1"/>`, size),
+  inaccuracy: (size = 20) => svg(disc(CLS_COLORS.inaccuracy) + glyphText("?!", 9.5), size),
+  mistake:    (size = 20) => svg(disc(CLS_COLORS.mistake)    + glyphText("?", 13), size),
+  blunder:    (size = 20) => svg(disc(CLS_COLORS.blunder)    + glyphText("??", 11), size),
+  miss: (size = 20) => svg(
+    disc(CLS_COLORS.miss) +
+    // "X" desenhado (mais nítido que texto).
+    `<path d="M8.3 8.3l7.4 7.4M15.7 8.3l-7.4 7.4" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round"/>`, size),
 };
 
 /* Converte SVG string em data URL pra usar como background-image. */

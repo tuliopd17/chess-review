@@ -20,13 +20,12 @@
   <header>
     <h1>♚ Chess Review</h1>
     <p class="tagline">Análise gratuita de partidas no estilo Game Review — feita pela comunidade.</p>
-    <span id="health-badge" class="badge badge-loading">checando Stockfish…</span>
   </header>
 
   <main>
     <!-- Coluna esquerda: import + histórico -->
     <aside class="sidebar">
-      <section class="card">
+      <section class="card" id="import-card">
         <h2>Importar partida</h2>
 
         <div class="tabs">
@@ -122,7 +121,6 @@
       <section class="card live-engine" id="live-engine-card">
         <div class="live-engine-head">
           <h2>Engine ao vivo</h2>
-          <span id="engine-status" class="badge badge-loading">carregando…</span>
         </div>
         <div class="live-engine-meta" id="engine-meta">
           <span id="engine-depth">depth —</span>

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import fastapi, uvicorn, chess, httpx, pydantic; print\\('deps OK'\\)\")",
+      "Bash(python run.py --no-browser)",
+      "Bash(curl -s http://127.0.0.1:8000/api/health)"
+    ]
+  }
+}

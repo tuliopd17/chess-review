@@ -1,0 +1,23 @@
+# Controle de versão / config local
+.git
+.gitignore
+.claude/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Logs / lixo
+*.log
+server.log
+.DS_Store
+
+# Exemplos não são necessários em runtime
+examples/
+
+# OBS: backend/data/ NÃO é ignorado de propósito — contém as aberturas (.tsv) e,
+# se você já rodou local, os binários do Stockfish WASM (que aceleram o build).

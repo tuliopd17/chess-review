@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+*.egg-info/
+dist/
+build/
+
+# Binários do Stockfish WASM — baixados automaticamente (em runtime no dev, ou no
+# build do Docker em produção). Não precisam ir pro Git (~11 MB).
+backend/data/sf/
+
+# Logs locais
+*.log

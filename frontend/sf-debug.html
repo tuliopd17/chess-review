@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>SF debug</title>
+  <style>
+    body { font-family: monospace; background: #1e1e1e; color: #ddd; padding: 16px; }
+    h1 { color: #ffd957; }
+    button { background: #769656; border: 0; padding: 8px 16px; color: white; cursor: pointer; margin: 4px; }
+    button:disabled { opacity: 0.5; }
+    #log { background: #000; padding: 12px; height: 60vh; overflow: auto; white-space: pre-wrap; font-size: 12px; border: 1px solid #444; }
+    .ok { color: #b8d96a; }
+    .err { color: #ff8a8a; }
+    .info { color: #8ec5ff; }
+    .dim { color: #888; }
+  </style>
+</head>
+<body>
+  <h1>♚ Stockfish WASM — debug isolado</h1>
+  <p>Esta página carrega o Stockfish WASM diretamente e mostra TODAS as linhas do protocolo UCI. Use pra verificar se o engine sozinho está funcionando.</p>
+  <div>
+    <button id="btn-boot">1. Boot engine</button>
+    <button id="btn-analyze" disabled>2. Analisar posição inicial (depth 12)</button>
+    <button id="btn-mate" disabled>3. Analisar mate-em-2 conhecido</button>
+    <button id="btn-stop" disabled>Stop</button>
+    <button id="btn-clear">Limpar log</button>
+  </div>
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById("log");
+    function log(msg, cls = "") {
+      const ts = new Date().toLocaleTimeString();
+      const line = document.createElement("div");
+      if (cls) line.className = cls;
+      line.textContent = `[${ts}] ${msg}`;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    let worker = null;
+
+    document.getElementById("btn-boot").onclick = async () => {
+      if (worker) {
+        log("worker já existe — terminando e recriando", "info");
+        worker.terminate();
+        worker = null;
+      }
+      // Resolve URL dinamicamente via /api/health
+      let url = "/sf/stockfish-nnue-16-single.js";
+      try {
+        const h = await fetch("/api/health").then(r => r.json());
+        log("health: " + JSON.stringify(h), "info");
+        if (h.stockfish_wasm_url) url = h.stockfish_wasm_url;
+      } catch (e) {
+        log("não consegui consultar /api/health: " + e.message, "err");
+      }
+      log("criando Worker em " + url, "info");
+      try {
+        worker = new Worker(url);
+      } catch (e) {
+        log("FALHA new Worker: " + e.message, "err");
+        return;
+      }
+      worker.onmessage = (e) => {
+        const raw = e.data;
+        const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+        log("<< " + text, "");
+      };
+      worker.onerror = (e) => {
+        log("worker.onerror: " + (e.message || e.filename + ":" + e.lineno), "err");
+      };
+      worker.onmessageerror = (e) => {
+        log("worker.onmessageerror: " + JSON.stringify(e), "err");
+      };
+      log(">> uci", "ok");
+      worker.postMessage("uci");
+      setTimeout(() => {
+        log(">> isready", "ok");
+        worker.postMessage("isready");
+      }, 100);
+      document.getElementById("btn-analyze").disabled = false;
+      document.getElementById("btn-mate").disabled = false;
+      document.getElementById("btn-stop").disabled = false;
+    };
+
+    document.getElementById("btn-analyze").onclick = () => {
+      if (!worker) return;
+      log(">> position startpos", "ok");
+      worker.postMessage("position startpos");
+      log(">> go depth 12", "ok");
+      worker.postMessage("go depth 12");
+    };
+
+    document.getElementById("btn-mate").onclick = () => {
+      if (!worker) return;
+      // Posição: branca dá mate em 2
+      const fen = "r1b2k1r/ppp1qppp/2n5/3p4/3P4/2P5/PP3PPP/RNBQK2R w KQ - 0 1";
+      log(">> position fen " + fen, "ok");
+      worker.postMessage("position fen " + fen);
+      log(">> go depth 15", "ok");
+      worker.postMessage("go depth 15");
+    };
+
+    document.getElementById("btn-stop").onclick = () => {
+      if (!worker) return;
+      log(">> stop", "ok");
+      worker.postMessage("stop");
+    };
+
+    document.getElementById("btn-clear").onclick = () => { logEl.innerHTML = ""; };
+
+    // Auto-boot
+    log("Página carregada. Clique em '1. Boot engine' para começar.", "dim");
+  </script>
+</body>
+</html>

@@ -870,7 +870,19 @@ function goToPly(ply) {
     const active = document.querySelector(`.move-cell[data-ply="${ply}"]`);
     if (active) {
       active.classList.add("active");
-      active.scrollIntoView({ block: "nearest" });
+      // Rola APENAS dentro da lista de lances, nunca a página. No mobile a lista
+      // não tem scroll próprio (max-height:none), então não rola nada — evita a
+      // tela "descer" ao passar os lances. (scrollIntoView mexia na página toda.)
+      const list = document.querySelector(".moves-list");
+      if (list && list.scrollHeight > list.clientHeight + 1) {
+        const lr = list.getBoundingClientRect();
+        const ar = active.getBoundingClientRect();
+        if (ar.top < lr.top) {
+          list.scrollTop -= (lr.top - ar.top) + 8;
+        } else if (ar.bottom > lr.bottom) {
+          list.scrollTop += (ar.bottom - lr.bottom) + 8;
+        }
+      }
     }
   }
 

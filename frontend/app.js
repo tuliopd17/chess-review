@@ -593,8 +593,8 @@ function resetForNewAnalysis() {
   document.getElementById("summary-card").style.display = "none";
   document.getElementById("coach-card").style.display = "none";
   if (state.evalChart) { state.evalChart.destroy(); state.evalChart = null; }
-  const ctx = document.getElementById("eval-chart");
-  ctx.style.opacity = "0.3";
+  // Esconde o gráfico até a nova análise gerar dados (renderEvalChart revela).
+  document.querySelector(".chart-wrapper").style.display = "none";
   goToPly(0);
 }
 
@@ -762,6 +762,8 @@ function renderMarkdownInline(s) {
 }
 
 function renderEvalChart() {
+  // Revela a caixa do gráfico (fica escondida enquanto não há dados).
+  document.querySelector(".chart-wrapper").style.display = "";
   const ctx = document.getElementById("eval-chart").getContext("2d");
   document.getElementById("eval-chart").style.opacity = "1";
   if (state.evalChart) state.evalChart.destroy();
@@ -836,7 +838,8 @@ function goToPly(ply) {
     state.board.setPosition(moves[ply - 1].fen_after, true);
   }
 
-  // Info
+  // Info — revela a caixa (fica escondida até existir partida pra mostrar).
+  document.getElementById("move-info").style.display = "";
   const infoCls = document.getElementById("move-classification");
   const infoCmt = document.getElementById("move-comment");
   const infoPv  = document.getElementById("move-pv");

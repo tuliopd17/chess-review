@@ -174,6 +174,9 @@ button {
   font-size: 0.9rem;
   font-weight: 500;
   transition: background 0.12s ease, transform 0.05s ease, box-shadow 0.12s ease;
+  /* Desativa o double-tap-to-zoom (pinch-zoom continua funcionando) — evita zoom
+     acidental ao tocar 2x rapido nos botoes, ex.: passar lances no celular. */
+  touch-action: manipulation;
 }
 button:hover { background: #4a4744; }
 button:active { transform: translateY(1px); }
@@ -189,6 +192,11 @@ button.primary:hover { background: #8cc257; }
 button.primary:active { box-shadow: none; }
 button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
 button.danger:hover { background: var(--danger); color: white; }
+
+/* Mesma proteção contra double-tap-zoom nos demais elementos clicáveis. */
+.move-cell, .game-item, .engine-line, .critical-item, .file-label {
+  touch-action: manipulation;
+}
 
 .row { display: flex; gap: 8px; align-items: center; }
 .row > * { flex: 1; }

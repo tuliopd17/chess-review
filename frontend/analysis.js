@@ -79,7 +79,7 @@
   /**
    * Acurácia da partida por cor, no método do Lichess (que aproxima de perto o
    * chess.com): para cada cor, a acurácia é a MÉDIA entre
-   *   - a média harmônica das acurácias dos lances (pune outliers: um capote
+   *   - a média harmônica das acurácias dos lances (pune outliers: uma capivarada
    *     derruba a nota), e
    *   - a média ponderada pela VOLATILIDADE (lances em posições mais "afiadas"
    *     pesam mais; peso = desvio-padrão das win% numa janela deslizante).
@@ -245,7 +245,7 @@
       book:       `${san} é um lance de abertura conhecido.`,
       inaccuracy: `Imprecisão. ${san} entrega um pouco da vantagem — ${best} era mais preciso.`,
       mistake:    `Erro. ${san} piora sua posição — o engine preferia ${best}.`,
-      blunder:    `Capote! ${san} é uma jogada ruim — o correto era ${best}.`,
+      blunder:    `Capivarada! ${san} é uma jogada ruim — o correto era ${best}.`,
       miss:       `Oportunidade perdida. Você poderia ter punido com ${best}.`,
     }[cls] || `${san}.`;
 
@@ -429,7 +429,7 @@
     const blB = moves.filter(m=>m.color==="black"&&m.classification==="blunder").length;
     const brW = moves.filter(m=>m.color==="white"&&m.classification==="brilliant").length;
     const brB = moves.filter(m=>m.color==="black"&&m.classification==="brilliant").length;
-    if (blW || blB) bullets.push(`Capotes na partida — Brancas: ${blW}; Pretas: ${blB}.`);
+    if (blW || blB) bullets.push(`Capivaradas na partida — Brancas: ${blW}; Pretas: ${blB}.`);
     if (brW || brB) bullets.push(`Lances brilhantes — Brancas: ${brW}; Pretas: ${brB}.`);
 
     let worst = null, worstLoss = 0;

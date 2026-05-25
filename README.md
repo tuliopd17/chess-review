@@ -25,7 +25,7 @@ A análise roda **100% no navegador via Stockfish WASM** — você não precisa 
 - **Tabuleiro com overlays**:
   - Highlight amarelo Lichess nas casas do lance jogado (origem mais leve, destino mais forte).
   - Ícone da classificação no canto superior direito da casa de destino.
-  - Setas: verde no melhor lance + vermelha no lance jogado, quando foi imprecisão/erro/capote.
+  - Setas: verde no melhor lance + vermelha no lance jogado, quando foi imprecisão/erro/capivarada.
 - **Painel de engine ao vivo**: top 3 linhas (MultiPV), profundidade, nodes/sec — estilo Lichess.
 - **Coach card**: pontos-chave da partida em português + lances críticos clicáveis.
 - **Histórico local**: análises ficam salvas no localStorage por hash do PGN.
@@ -136,7 +136,7 @@ winrate = 1 / (1 + exp(-0.00368208 × cp))
 | Book        | —                 | Lance ainda dentro da base de aberturas do Lichess |
 | Inaccuracy  | até 10%           | Imprecisão visível |
 | Mistake     | até 20%           | Erro |
-| Blunder     | acima de 20%      | Capote |
+| Blunder     | acima de 20%      | Capivarada |
 | Miss        | —                 | Oponente errou e o jogador não puniu |
 
 Acurácia: `103.1668 × exp(-0.04354 × loss%) - 3.1669` (mesma fórmula do chess.com).

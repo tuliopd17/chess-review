@@ -48,7 +48,7 @@ const CLASS_LABELS = {
   book:       "Abertura",
   inaccuracy: "Imprecisão",
   mistake:    "Erro",
-  blunder:    "Capote",
+  blunder:    "Capivarada",
   miss:       "Oportunidade Perdida",
 };
 

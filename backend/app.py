@@ -48,12 +48,18 @@ app = FastAPI(title="Chess Review", version="0.4.0")
 
 
 @app.on_event("startup")
-async def _cleanup_old_sf():
+async def _startup_warmup():
     # Remove arquivos da versão SF18 lite-single (que quebrava em vários browsers).
     try:
         sf_assets.cleanup_old_files()
     except Exception as e:
         print(f"[startup] cleanup_old_files falhou: {e}")
+    # Pré-carrega o índice de aberturas (rápido com cache em disco) pra que a 1ª
+    # análise não pague o custo de construção — elimina a demora no primeiro jogo.
+    try:
+        openings.load()
+    except Exception as e:
+        print(f"[startup] openings.load falhou: {e}")
 
 
 class PGNRequest(BaseModel):

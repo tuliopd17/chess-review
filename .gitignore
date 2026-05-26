@@ -12,5 +12,8 @@ build/
 # build do Docker em produção). Não precisam ir pro Git (~11 MB).
 backend/data/sf/
 
+# Cache do índice de aberturas — gerado automaticamente (build do Docker/runtime).
+backend/data/openings_index.json
+
 # Logs locais
 *.log

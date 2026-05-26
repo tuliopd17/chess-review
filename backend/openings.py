@@ -17,6 +17,7 @@ isso, e por isso "saía do livro" cedo demais).
 """
 from __future__ import annotations
 
+import json
 import os
 import urllib.request
 from pathlib import Path
@@ -38,6 +39,11 @@ OPENINGS_FILES = ["a.tsv", "b.tsv", "c.tsv", "d.tsv", "e.tsv"]
 _OPENING_INDEX: Dict[str, Tuple[str, str]] = {}
 _LOADED = False
 _MAX_PLIES_INDEXED = 0  # linha mais longa indexada — limita a varredura na detecção
+
+# Cache do índice já construído (EPD -> ECO/nome). Construir do zero (reparsear
+# ~3700 PGNs) custa ~2s; ler este JSON custa ~50ms. É gerado no build do Docker
+# (prewarm) e regenerado em runtime se faltar ou se os TSVs forem mais novos.
+_INDEX_CACHE = DATA_DIR / "openings_index.json"
 
 
 def _download_if_missing() -> None:
@@ -69,13 +75,68 @@ def _final_epd_from_pgn(pgn_text: str) -> Tuple[Optional[str], int]:
     return board.epd(), n
 
 
+def _tsvs_newest_mtime() -> float:
+    """mtime mais recente entre os TSVs presentes (0 se nenhum)."""
+    newest = 0.0
+    for name in OPENINGS_FILES:
+        p = DATA_DIR / name
+        if p.exists():
+            newest = max(newest, p.stat().st_mtime)
+    return newest
+
+
+def _try_load_cache() -> bool:
+    """Tenta popular o índice a partir do JSON em disco. True se conseguiu."""
+    global _MAX_PLIES_INDEXED
+    try:
+        if not _INDEX_CACHE.exists():
+            return False
+        # Só aceita o cache se ele for mais novo que os TSVs (senão pode estar stale).
+        if _INDEX_CACHE.stat().st_mtime < _tsvs_newest_mtime():
+            return False
+        with open(_INDEX_CACHE, encoding="utf-8") as f:
+            data = json.load(f)
+        idx = data.get("index", {})
+        if not idx:
+            return False
+        for k, v in idx.items():
+            _OPENING_INDEX[k] = (v[0], v[1])
+        _MAX_PLIES_INDEXED = int(data.get("max_plies", 0))
+        return True
+    except Exception as e:
+        print(f"[openings] cache invalido ({e}); reconstruindo do TSV")
+        _OPENING_INDEX.clear()
+        return False
+
+
+def _save_cache() -> None:
+    """Salva o índice construído em disco pra acelerar próximas inicializações."""
+    try:
+        data = {
+            "max_plies": _MAX_PLIES_INDEXED,
+            "index": {k: [v[0], v[1]] for k, v in _OPENING_INDEX.items()},
+        }
+        with open(_INDEX_CACHE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"[openings] falha ao salvar cache: {e}")
+
+
 def _load() -> None:
-    """Carrega todos os TSVs em memória. Chamado lazy na primeira consulta."""
+    """Carrega o índice em memória. Chamado lazy na primeira consulta (ou no
+    startup). Usa o cache em disco quando disponível; senão constrói do TSV."""
     global _LOADED, _MAX_PLIES_INDEXED
     if _LOADED:
         return
     _download_if_missing()
 
+    # Caminho rápido: lê o índice já pronto do disco.
+    if _try_load_cache():
+        _LOADED = True
+        print(f"[openings] {len(_OPENING_INDEX)} aberturas do cache (até {_MAX_PLIES_INDEXED} plies).")
+        return
+
+    # Caminho lento: constrói do TSV e salva o cache pra próxima vez.
     for name in OPENINGS_FILES:
         path = DATA_DIR / name
         if not path.exists():
@@ -102,7 +163,14 @@ def _load() -> None:
             print(f"[openings] erro lendo {name}: {e}")
 
     _LOADED = True
-    print(f"[openings] carregadas {len(_OPENING_INDEX)} aberturas por posição (até {_MAX_PLIES_INDEXED} plies).")
+    _save_cache()
+    print(f"[openings] carregadas {len(_OPENING_INDEX)} aberturas por posição (até {_MAX_PLIES_INDEXED} plies); cache salvo.")
+
+
+def load() -> None:
+    """Pré-carrega a base de aberturas (usado no startup do servidor pra que a
+    primeira análise não pague o custo de construção do índice)."""
+    _load()
 
 
 def is_loaded() -> bool:

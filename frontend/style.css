@@ -72,6 +72,17 @@ header h1 {
   letter-spacing: -0.01em;
 }
 
+/* Logo (imagem) no lugar do título de texto. */
+header h1.brand {
+  line-height: 0;          /* tira o espaço extra abaixo da imagem inline */
+  flex: 0 0 auto;
+}
+header h1.brand img {
+  height: 68px;
+  width: auto;
+  display: block;
+}
+
 .tagline {
   margin: 0;
   color: var(--text-muted);
@@ -674,9 +685,9 @@ footer a { color: var(--accent); }
 
 /* Celular: aperta espaçamentos, esconde a tagline, alvos de toque maiores. */
 @media (max-width: 600px) {
-  header { padding: 12px 16px; }
-  header h1 { font-size: 1.3rem; }
-  .tagline { display: none; }
+  header { padding: 10px 16px; }
+  header h1.brand img { height: 56px; }
+  .tagline { font-size: 0.8rem; }
 
   main { padding: 12px; gap: 12px; }
   .card { padding: 13px; }

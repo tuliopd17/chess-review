@@ -81,6 +81,18 @@ function bootApp() {
   initImportButtons();
   initHistory();
   initLiveEngine();
+  initBrandHome();
+}
+
+// Clique no logo do header recarrega a página (mesmo se já estiver em "/")
+// — funciona como um F5, descarta a análise atual e volta pro estado limpo.
+function initBrandHome() {
+  const link = document.getElementById("brand-home");
+  if (!link) return;
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    window.location.assign("/");
+  });
 }
 document.addEventListener("crBoardReady", bootApp);
 window.addEventListener("DOMContentLoaded", () => {

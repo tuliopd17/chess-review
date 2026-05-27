@@ -82,6 +82,16 @@ header h1.brand img {
   width: auto;
   display: block;
 }
+/* Logo clicavel = voltar pra home (F5). Hover sutil pra indicar a interacao. */
+header h1.brand a {
+  display: inline-block;
+  line-height: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+header h1.brand a:hover { opacity: 0.85; }
+header h1.brand a:active { transform: scale(0.98); }
+header h1.brand a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
 
 .tagline {
   margin: 0;

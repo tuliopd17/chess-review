@@ -198,6 +198,22 @@ function initControls() {
     state.board.setOrientation(state.orientation, true);
   };
 
+  // Mute toggle — som dos lances ao navegar pela partida.
+  const muteBtn = document.getElementById("btn-mute");
+  const refreshMute = () => {
+    const muted = window.ChessReviewSounds?.isMuted();
+    muteBtn.textContent = muted ? "🔇" : "🔊";
+    muteBtn.classList.toggle("muted", !!muted);
+    muteBtn.title = muted ? "Som desligado" : "Som ligado";
+  };
+  refreshMute();
+  muteBtn.onclick = () => {
+    window.ChessReviewSounds?.toggle();
+    refreshMute();
+  };
+  // Preload sons em background (não bloqueia init).
+  try { window.ChessReviewSounds?.preload(); } catch {}
+
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
     if (e.key === "ArrowLeft")  document.getElementById("btn-prev").click();
@@ -954,6 +970,7 @@ function goToPly(ply) {
   }
   const moves = currentMoves();
   ply = Math.max(0, Math.min(ply, moves.length));
+  const prevPly = state.currentPly;
   state.currentPly = ply;
 
   // Tabuleiro (cm-chessboard)
@@ -961,6 +978,11 @@ function goToPly(ply) {
     state.board.setPosition(state.board.FEN.start, true);
   } else {
     state.board.setPosition(moves[ply - 1].fen_after, true);
+  }
+
+  // Som do lance — só ao avançar/voltar (não ao recarregar a mesma posição).
+  if (ply !== prevPly && ply > 0) {
+    window.ChessReviewSounds?.playMoveSound(moves[ply - 1]);
   }
 
   // Info — revela a caixa (fica escondida até existir partida pra mostrar).
@@ -1075,6 +1097,12 @@ function renderBoardOverlays() {
   state.board.highlightMove(m.from, m.to);
   state.board.markClassification(m.to, m.classification);
 
+  // Xeque: marca a casa do rei do lado a mover em vermelho pulsante.
+  if (m.is_check || m.is_checkmate) {
+    const ks = findKingSquareInFen(m.fen_after);
+    if (ks) state.board.markCheck(ks);
+  }
+
   // Setas em caso de lance ruim.
   const bad = ["blunder", "mistake", "inaccuracy", "miss"];
   if (bad.includes(m.classification) && m.best_move_uci) {
@@ -1174,4 +1202,22 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
+}
+
+// Encontra a casa do rei do lado a mover, direto do FEN (evita instanciar chess.js).
+function findKingSquareInFen(fen) {
+  if (!fen) return null;
+  const parts = fen.split(" ");
+  const rows = parts[0].split("/");
+  const sideToMove = parts[1] || "w";
+  const kingChar = sideToMove === "w" ? "K" : "k";
+  for (let r = 0; r < 8; r++) {
+    let f = 0;
+    for (const ch of rows[r]) {
+      if (/\d/.test(ch)) { f += parseInt(ch, 10); continue; }
+      if (ch === kingChar) return String.fromCharCode(97 + f) + (8 - r);
+      f++;
+    }
+  }
+  return null;
 }

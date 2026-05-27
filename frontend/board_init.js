@@ -40,6 +40,8 @@ const ASSETS_URL = "https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/";
 // (Identidade por referência — cuidado pra reusar.)
 const MARKER_LAST_FROM = { class: "marker-square-from", slice: "markerSquare" };
 const MARKER_LAST_TO   = { class: "marker-square-to",   slice: "markerSquare" };
+// Highlight da casa do rei em xeque — vermelho pulsante (estilo chess.com).
+const MARKER_CHECK     = { class: "marker-square-check", slice: "markerSquare" };
 
 // Tipos customizados de arrow.
 const ARROW_BEST   = { class: "arrow-best",   slice: "arrowDefault", headSize: 7 };
@@ -71,20 +73,63 @@ const board = new Chessboard(containerEl, {
 });
 
 // ============================================================
-// Marker do "ícone de classificação" — usa marker tipo "frame"
-// colorido conforme a classificação. Mais simples e robusto que tentar
-// posicionar um SVG sobre o tabuleiro.
+// Badge da classificação — disco colorido com o ícone, posicionado
+// no canto superior direito da casa de destino (estilo chess.com).
+// É um overlay HTML separado sobre o SVG do cm-chessboard, posicionado
+// em % da área do tabuleiro pra acompanhar resize/flip naturalmente.
 // ============================================================
-const CLASSIFICATION_MARKER_TYPES = {};
-function classMarkerType(classification) {
-  if (!CLASSIFICATION_MARKER_TYPES[classification]) {
-    CLASSIFICATION_MARKER_TYPES[classification] = {
-      class: `cls-marker-${classification}`,
-      slice: "markerFrame",
-    };
-  }
-  return CLASSIFICATION_MARKER_TYPES[classification];
+const overlayEl = document.createElement("div");
+overlayEl.className = "board-overlays";
+containerEl.appendChild(overlayEl);
+
+let currentBadge = null; // { square, classification } | null
+
+function squareCenterPercent(square) {
+  // a..h → 0..7, 1..8 → 0..7. Orientação branca: a1 fica embaixo-esquerda.
+  const file = square.charCodeAt(0) - 97;
+  const rank = parseInt(square[1], 10) - 1;
+  const whiteDown = board.getOrientation() === COLOR.white;
+  const col = whiteDown ? file : 7 - file;
+  const row = whiteDown ? 7 - rank : rank;
+  return {
+    cx: ((col + 0.5) / 8) * 100,
+    cy: ((row + 0.5) / 8) * 100,
+    cellSize: 100 / 8,
+  };
 }
+
+function renderBadge() {
+  overlayEl.innerHTML = "";
+  if (!currentBadge) return;
+  const { square, classification } = currentBadge;
+  if (!square || !classification || !window.CLASS_ICONS?.[classification]) return;
+  const { cx, cy, cellSize } = squareCenterPercent(square);
+  const badgeSize = cellSize * 0.46; // ~46% da casa, igual ao chess.com
+  const el = document.createElement("div");
+  el.className = `cls-badge cls-badge-${classification}`;
+  // Posiciona no canto superior direito da casa: meio da casa + meio da célula
+  // (menos um pouco pra ficar "mordendo" o canto, não pra fora).
+  el.style.left = `${cx + cellSize * 0.42}%`;
+  el.style.top  = `${cy - cellSize * 0.42}%`;
+  el.style.width  = `${badgeSize}%`;
+  el.style.height = `${badgeSize}%`;
+  el.innerHTML = window.CLASS_ICONS[classification](100);
+  overlayEl.appendChild(el);
+}
+
+// Reposiciona badge ao virar tabuleiro. setOrientation retorna Promise pq
+// anima — precisamos esperar a animação terminar pra getOrientation() devolver
+// a nova orientação. Chamamos renderBadge tanto após o tick (caso sync) quanto
+// no .then (caso async).
+const _origFlip = board.setOrientation.bind(board);
+board.setOrientation = function (color, animated) {
+  const r = _origFlip(color, animated);
+  if (r && typeof r.then === "function") {
+    r.then(() => renderBadge());
+  }
+  renderBadge();
+  return r;
+};
 
 // ============================================================
 // API exposta no window
@@ -115,17 +160,25 @@ window.crBoard = {
     if (to)   board.addMarker(MARKER_LAST_TO, to);
   },
 
+  markCheck(square) {
+    board.removeMarkers(MARKER_CHECK);
+    if (square) board.addMarker(MARKER_CHECK, square);
+  },
+  clearCheck() {
+    board.removeMarkers(MARKER_CHECK);
+  },
+
   markClassification(square, classification) {
-    // Remove qualquer marcador de classificação anterior.
-    Object.values(CLASSIFICATION_MARKER_TYPES).forEach(t => board.removeMarkers(t));
-    if (!square || !classification) return;
-    board.addMarker(classMarkerType(classification), square);
+    currentBadge = (square && classification) ? { square, classification } : null;
+    renderBadge();
   },
 
   clearHighlights() {
     board.removeMarkers(MARKER_LAST_FROM);
     board.removeMarkers(MARKER_LAST_TO);
-    Object.values(CLASSIFICATION_MARKER_TYPES).forEach(t => board.removeMarkers(t));
+    board.removeMarkers(MARKER_CHECK);
+    currentBadge = null;
+    renderBadge();
     board.removeArrows(ARROW_BEST);
     board.removeArrows(ARROW_PLAYED);
     board.removeArrows(ARROW_ENGINE);

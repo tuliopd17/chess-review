@@ -195,9 +195,14 @@
     const loss = wrBest - wrAfter;
     const isBest = move.san === move.best_move_san;
 
-    // Brilliant: sacrifício + lance bom + posição equilibrada
+    // Brilliant: sacrifício + lance bom + posição não já vencida.
+    // best_eval_cp aqui é a melhor avaliação ANTES do lance (POV de quem moveu).
+    // Critério estilo chess.com: não pode estar já ganhando (< +2 ≈ 200cp) — se
+    // já está crushing, sacrifício deixa de ser "brilhante", vira "óbvio".
+    // Também não pode estar perdido (> -300cp): se está -3 e sacrifica, é a
+    // única chance de jogo, não brilhantismo.
     if (move.is_sacrifice && loss < THRESHOLDS.excellent) {
-      if (move.best_eval_cp > -300 && move.best_eval_cp < 900) {
+      if (move.best_eval_cp > -300 && move.best_eval_cp < 200) {
         return "brilliant";
       }
     }

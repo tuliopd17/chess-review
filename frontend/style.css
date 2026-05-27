@@ -396,12 +396,15 @@ button.danger:hover { background: var(--danger); color: white; }
 .chart-wrapper {
   width: 100%;
   max-width: var(--panel-max);
-  height: 140px;
-  background: var(--bg-card);
+  height: 180px;
   border-radius: var(--radius);
   border: 1px solid rgba(255,255,255,0.04);
-  padding: 8px;
+  overflow: hidden;
+  padding: 0;
+  background: #262421;
+  box-shadow: var(--shadow-card);
 }
+#eval-chart { width: 100%; height: 100%; }
 
 /* ===== Moves list ===== */
 

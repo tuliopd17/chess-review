@@ -14,9 +14,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/extensions/markers/markers.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/extensions/arrows/arrows.css" />
 
-  <!-- chess.js (validação de lances no modo exploração) e Chart.js (gráfico de eval) -->
+  <!-- chess.js (validação de lances no modo exploração) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <!-- Highcharts Stock: gráfico de eval estilo chess.com Game Review. -->
+  <script src="https://code.highcharts.com/stock/highstock.js"></script>
 
   <link rel="stylesheet" href="/static/style.css" />
 </head>
@@ -152,7 +153,7 @@
       </section>
 
       <div class="chart-wrapper" style="display:none;">
-        <canvas id="eval-chart"></canvas>
+        <div id="eval-chart"></div>
       </div>
     </section>
 

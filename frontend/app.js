@@ -761,59 +761,184 @@ function renderMarkdownInline(s) {
   return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 }
 
+// Classificações com marcador no gráfico (5 mais relevantes, sem ruído).
+const CHART_MARKER_COLOR = {
+  brilliant:  "#26c2a3",
+  great:      "#5c8bb0",
+  inaccuracy: "#f4bf3f",
+  mistake:    "#ef9234",
+  blunder:    "#ca3431",
+};
+
+// Mapeamento logístico estilo Lichess: comprime evals altos e expande os baixos.
+// Sem isso, 99% da partida (eval entre ±100cp) parece linha reta num eixo ±1000.
+// Domínio: cp em centipeões. Imagem: y em [-1, 1].
+function evalToY(cp) {
+  const pawns = cp / 100;
+  return 2 / (1 + Math.exp(-0.4 * pawns)) - 1;
+}
+
 function renderEvalChart() {
-  // Revela a caixa do gráfico (fica escondida enquanto não há dados).
   document.querySelector(".chart-wrapper").style.display = "";
-  const ctx = document.getElementById("eval-chart").getContext("2d");
-  document.getElementById("eval-chart").style.opacity = "1";
-  if (state.evalChart) state.evalChart.destroy();
+  if (state.evalChart) { state.evalChart.destroy(); state.evalChart = null; }
 
   const moves = currentMoves();
   const labels = ["início", ...moves.map(m => `${m.move_number}${m.color === "white" ? "" : "..."}`)];
-  const data = [0];
-  for (const m of moves) {
+
+  // Ponto 0 = posição inicial; depois um ponto por lance.
+  // y = valor logístico em [-1,1]; rawCp guarda o cp original p/ tooltip.
+  const data = [{ x: 0, y: 0, rawCp: 0, name: "início", ply: 0, marker: { enabled: false } }];
+  for (let i = 0; i < moves.length; i++) {
+    const m = moves[i];
     const fromWhite = m.color === "white" ? m.eval_after_cp : -m.eval_after_cp;
-    data.push(Math.max(-1000, Math.min(1000, fromWhite)));
+    const dotColor = CHART_MARKER_COLOR[m.classification];
+    data.push({
+      x: i + 1,
+      y: evalToY(fromWhite),
+      rawCp: fromWhite,
+      name: labels[i + 1],
+      ply: m.ply,
+      classification: m.classification,
+      marker: dotColor ? {
+        enabled: true,
+        radius: 5.5,
+        fillColor: dotColor,
+        lineColor: "rgba(255,255,255,0.92)",
+        lineWidth: 2,
+        symbol: "circle",
+      } : { enabled: false },
+    });
   }
 
-  state.evalChart = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{
-        data,
-        borderColor: "#81b64c",
-        backgroundColor: "rgba(129,182,76,0.15)",
-        fill: true,
-        tension: 0.2,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-      }],
+  state.evalChart = Highcharts.stockChart("eval-chart", {
+    chart: {
+      backgroundColor: "#262421",
+      margin: [8, 8, 8, 8],
+      spacing: [0, 0, 0, 0],
+      animation: { duration: 450 },
+      style: { fontFamily: "inherit" },
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      onClick: (evt, elements) => {
-        if (elements.length > 0) goToPly(elements[0].index);
+    title: { text: null },
+    credits: { enabled: false },
+    legend: { enabled: false },
+    accessibility: { enabled: false },
+
+    // Tira tudo que faz cara de gráfico financeiro corporativo.
+    navigator: { enabled: false },
+    scrollbar: { enabled: false },
+    rangeSelector: { enabled: false, inputEnabled: false },
+
+    xAxis: {
+      type: "linear",
+      ordinal: false,
+      categories: labels,
+      lineWidth: 0,
+      tickWidth: 0,
+      gridLineWidth: 0,
+      minPadding: 0,
+      maxPadding: 0,
+      labels: { enabled: false },
+      crosshair: {
+        color: "rgba(255,255,255,0.18)",
+        width: 1,
+        dashStyle: "Solid",
+        zIndex: 6,
       },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: (items) => items[0].label,
-            label: (item) => `eval: ${(item.parsed.y / 100).toFixed(2)}`,
+    },
+
+    yAxis: {
+      // Eixo no domínio logístico — [-1, 1] cobre toda a faixa de evals.
+      min: -1,
+      max: 1,
+      startOnTick: false,
+      endOnTick: false,
+      lineWidth: 0,
+      tickWidth: 0,
+      gridLineWidth: 0,
+      title: { text: null },
+      labels: { enabled: false },
+      opposite: false,
+      // Linha do zero — dashed sutil, separa os dois campos.
+      plotLines: [
+        { value: 0, color: "rgba(180,170,160,0.22)", width: 1, dashStyle: "Dash", zIndex: 1 },
+      ],
+    },
+
+    tooltip: {
+      enabled: true,
+      split: false,
+      shared: false,
+      useHTML: true,
+      backgroundColor: "rgba(15,14,12,0.96)",
+      borderColor: "rgba(129,182,76,0.35)",
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 0,
+      shadow: { color: "rgba(0,0,0,0.6)", offsetX: 0, offsetY: 4, opacity: 0.45, width: 10 },
+      style: { color: "#e8e6e3", fontSize: "11px", pointerEvents: "none" },
+      hideDelay: 80,
+      formatter() {
+        const cp = this.point.options.rawCp || 0;
+        const sign = cp >= 0 ? "+" : "";
+        const evalStr = `${sign}${(cp / 100).toFixed(2)}`;
+        const evalColor = cp > 30 ? "#f0eee9" : cp < -30 ? "#8a8580" : "#c9c6c1";
+        const cls = this.point.options.classification;
+        const clsLabel = cls && CLASS_LABELS[cls] ? CLASS_LABELS[cls] : "";
+        const dotColor = cls && CHART_MARKER_COLOR[cls] ? CHART_MARKER_COLOR[cls] : null;
+        const clsTag = clsLabel ? `
+          <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:6px">
+            ${dotColor ? `<span style="width:8px;height:8px;border-radius:50%;background:${dotColor};display:inline-block;box-shadow:0 0 8px ${dotColor}99"></span>` : ""}
+            <span style="color:#c9c6c1;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">${clsLabel}</span>
+          </div>` : "";
+        return `
+          <div style="padding:8px 12px;min-width:120px">
+            <div style="color:#7a7570;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">${this.point.name}</div>
+            <div style="font-size:18px;font-weight:700;color:${evalColor};font-variant-numeric:tabular-nums;line-height:1.1">${evalStr}</div>
+            ${clsTag}
+          </div>
+        `;
+      },
+    },
+
+    plotOptions: {
+      series: {
+        animation: { duration: 600 },
+        states: {
+          hover: { lineWidth: 2.5, halo: { size: 0 } },
+          inactive: { opacity: 1 },
+        },
+        cursor: "pointer",
+        point: {
+          events: {
+            click() { goToPly(this.options.ply); },
           },
         },
       },
-      scales: {
-        y: {
-          min: -1000, max: 1000,
-          grid: { color: "rgba(255,255,255,0.05)" },
-          ticks: { color: "#9d9b98", callback: v => (v / 100).toFixed(0) },
+      areaspline: {
+        threshold: 0,
+        lineWidth: 1.5,
+        // Linha cinza médio — legível tanto sobre o branco quanto sobre o preto.
+        color: "#7d7773",
+        // Fills sólidos (off-white / near-black) que conversam com o bg #262421
+        // sem agredir os olhos como branco puro / preto puro.
+        fillColor: "rgba(237,235,231,0.92)",
+        negativeFillColor: "rgba(16,14,12,0.92)",
+        fillOpacity: 1,
+        marker: {
+          enabled: false,
+          states: {
+            hover: { enabled: true, radius: 4.5, lineWidth: 2, lineColor: "rgba(255,255,255,0.9)" },
+          },
         },
-        x: { display: false, grid: { display: false } },
       },
     },
+
+    series: [{
+      type: "areaspline",
+      name: "eval",
+      data,
+      zIndex: 2,
+    }],
   });
 }
 

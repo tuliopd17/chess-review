@@ -27,10 +27,13 @@ function disc(color) {
 }
 
 // Texto branco centralizado (para ! ? etc.).
-function glyphText(txt, fontSize) {
+// font-weight 900 + letter-spacing comprimido pra dobrar símbolos (!!, ??)
+// caberem grandes dentro do disco — igual ao chess.com Game Review.
+function glyphText(txt, fontSize, letterSpacing = 0) {
+  const ls = letterSpacing ? ` letter-spacing="${letterSpacing}"` : "";
   return `<text x="12" y="12" text-anchor="middle" dominant-baseline="central" ` +
          `font-family="-apple-system, 'Segoe UI', Roboto, sans-serif" ` +
-         `font-size="${fontSize}" font-weight="800" fill="#ffffff">${txt}</text>`;
+         `font-size="${fontSize}" font-weight="900"${ls} fill="#ffffff">${txt}</text>`;
 }
 
 // Checkmark branco (espessura ajustável).
@@ -45,10 +48,10 @@ function svg(inner, size) {
 }
 
 const CLASS_ICONS = {
-  brilliant: (size = 20) => svg(disc(CLS_COLORS.brilliant) + glyphText("!!", 11), size),
-  great:     (size = 20) => svg(disc(CLS_COLORS.great)     + glyphText("!", 13), size),
-  best:      (size = 20) => svg(disc(CLS_COLORS.best)      + glyphCheck(2.6), size),
-  excellent: (size = 20) => svg(disc(CLS_COLORS.excellent) + glyphCheck(2.2), size),
+  brilliant: (size = 20) => svg(disc(CLS_COLORS.brilliant) + glyphText("!!", 14, -1.5), size),
+  great:     (size = 20) => svg(disc(CLS_COLORS.great)     + glyphText("!", 17), size),
+  best:      (size = 20) => svg(disc(CLS_COLORS.best)      + glyphCheck(3.0), size),
+  excellent: (size = 20) => svg(disc(CLS_COLORS.excellent) + glyphCheck(2.6), size),
   good: (size = 20) => svg(
     disc(CLS_COLORS.good) +
     `<circle cx="12" cy="12" r="3.1" fill="#ffffff"/>`, size),
@@ -57,9 +60,9 @@ const CLASS_ICONS = {
     // Livro aberto (duas páginas) branco com vinco central.
     `<path d="M12 8.1C10.5 7.2 8.8 6.9 7 6.9v9c1.8 0 3.5.3 5 1.2 1.5-.9 3.2-1.2 5-1.2v-9c-1.8 0-3.5.3-5 1.2z" fill="#ffffff"/>` +
     `<line x1="12" y1="8.1" x2="12" y2="17.1" stroke="${CLS_COLORS.book}" stroke-width="1.1"/>`, size),
-  inaccuracy: (size = 20) => svg(disc(CLS_COLORS.inaccuracy) + glyphText("?!", 9.5), size),
-  mistake:    (size = 20) => svg(disc(CLS_COLORS.mistake)    + glyphText("?", 13), size),
-  blunder:    (size = 20) => svg(disc(CLS_COLORS.blunder)    + glyphText("??", 11), size),
+  inaccuracy: (size = 20) => svg(disc(CLS_COLORS.inaccuracy) + glyphText("?!", 13, -1.5), size),
+  mistake:    (size = 20) => svg(disc(CLS_COLORS.mistake)    + glyphText("?", 17), size),
+  blunder:    (size = 20) => svg(disc(CLS_COLORS.blunder)    + glyphText("??", 14, -1.5), size),
   miss: (size = 20) => svg(
     disc(CLS_COLORS.miss) +
     // "X" desenhado (mais nítido que texto).

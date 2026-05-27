@@ -379,7 +379,12 @@ button.danger:hover { background: var(--danger); color: white; }
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Anula tap highlight (delay no iOS Safari) e o pulinho do :active —
+     juntos com blur() no JS, evitam o bug de "preciso tocar 2-3x" no mobile. */
+  -webkit-tap-highlight-color: transparent;
 }
+.controls button:active { transform: none; }
+.controls button:focus { outline: none; }
 /* Mute: discreto, sem flex-grow — botão pequeno no fim.
    Tamanho FIXO pra evitar o 🔇 (mais estreito) encolher visualmente vs 🔊. */
 .controls .mute-btn {

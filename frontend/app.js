@@ -189,20 +189,33 @@ function initTabs() {
 }
 
 function initControls() {
-  document.getElementById("btn-start").onclick = () => goToPly(0);
-  document.getElementById("btn-end").onclick   = () => goToPly(currentMoves().length);
-  document.getElementById("btn-prev").onclick  = () => goToPly(state.currentPly - 1);
-  document.getElementById("btn-next").onclick  = () => goToPly(state.currentPly + 1);
-  document.getElementById("btn-flip").onclick  = () => {
+  // Wrap dos handlers de controle: chama goToPly e dá blur() no botão.
+  // No iOS Safari, um botão que ficou em :focus depois de um tap às vezes exige
+  // um "tap pra liberar" antes de aceitar o próximo — daí o usuário precisava
+  // tocar 2-3x na seta de "próximo". Limpar o foco resolve.
+  function bindNav(btnId, action) {
+    const btn = document.getElementById(btnId);
+    btn.onclick = () => { action(); btn.blur(); };
+  }
+  bindNav("btn-start", () => goToPly(0));
+  bindNav("btn-end",   () => goToPly(currentMoves().length));
+  bindNav("btn-prev",  () => goToPly(state.currentPly - 1));
+  bindNav("btn-next",  () => goToPly(state.currentPly + 1));
+  bindNav("btn-flip",  () => {
     state.orientation = state.orientation === "white" ? "black" : "white";
     state.board.setOrientation(state.orientation, true);
-  };
+  });
 
   // Mute toggle — som dos lances ao navegar pela partida.
+  // Usamos SVG inline (mesmo viewBox/peso) em vez de emoji pra evitar a
+  // diferença visual entre 🔊 e 🔇 (que aparentemente são desenhados em
+  // larguras diferentes pelo OS).
+  const SVG_SOUND_ON = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto"><path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>`;
+  const SVG_SOUND_OFF = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto"><path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>`;
   const muteBtn = document.getElementById("btn-mute");
   const refreshMute = () => {
     const muted = window.ChessReviewSounds?.isMuted();
-    muteBtn.textContent = muted ? "🔇" : "🔊";
+    muteBtn.innerHTML = muted ? SVG_SOUND_OFF : SVG_SOUND_ON;
     muteBtn.classList.toggle("muted", !!muted);
     muteBtn.title = muted ? "Som desligado" : "Som ligado";
   };
@@ -210,6 +223,7 @@ function initControls() {
   muteBtn.onclick = () => {
     window.ChessReviewSounds?.toggle();
     refreshMute();
+    muteBtn.blur(); // libera :focus/:active no iOS pra próximo tap responder rápido
   };
   // Preload sons em background (não bloqueia init).
   try { window.ChessReviewSounds?.preload(); } catch {}

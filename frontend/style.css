@@ -411,7 +411,7 @@ button.danger:hover { background: var(--danger); color: white; }
 /* Sem mudanca de opacity no estado mutado — o icone com X ja comunica
    "som desligado" sem precisar fazer o badge "parecer apagado". */
 .controls .mute-btn.muted { opacity: 0.85; }
-.controls .mute-btn svg { display: block; width: 20px; height: 20px; }
+.controls .mute-btn svg { display: block; width: 22px; height: 22px; }
 
 #move-info {
   width: 100%;

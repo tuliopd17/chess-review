@@ -266,6 +266,59 @@ button.danger:hover { background: var(--danger); color: white; }
   max-width: var(--panel-max);
 }
 
+/* Barra de nome do jogador acima/abaixo do tabuleiro (estilo chess.com).
+   Inverte quem aparece em cima/embaixo conforme a orientação do tabuleiro. */
+.player-bar {
+  width: 100%;
+  max-width: var(--panel-max);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.player-bar .player-disc {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  flex: 0 0 16px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.player-bar .player-disc.white { background: #f0eee9; border-color: rgba(0,0,0,0.25); }
+.player-bar .player-disc.black { background: #1a1715; }
+.player-bar .player-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-bar .player-elo {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+.player-bar .player-result {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+.player-bar .player-result.win  { background: var(--accent); color: white; }
+.player-bar .player-result.loss { background: rgba(202,52,49,0.25); color: var(--c-blunder); }
+.player-bar .player-result.draw { background: var(--bg-elevated); color: var(--text); }
+
 /* Eval bar vertical (esquerda do tabuleiro) */
 .eval-bar {
   position: relative;

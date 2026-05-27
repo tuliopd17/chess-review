@@ -91,6 +91,9 @@
 
     <!-- Centro: tabuleiro + eval bar + controles -->
     <section class="board-section">
+      <!-- Player de cima (cor invertida do tabuleiro) -->
+      <div class="player-bar" id="player-top" style="display:none;"></div>
+
       <div class="board-wrap">
         <!-- Eval bar vertical -->
         <div class="eval-bar" id="eval-bar">
@@ -101,6 +104,9 @@
           <div id="board"></div>
         </div>
       </div>
+
+      <!-- Player de baixo (cor das peças que estão na parte inferior) -->
+      <div class="player-bar" id="player-bottom" style="display:none;"></div>
 
       <div class="controls">
         <button id="btn-start" title="Início">⏮</button>

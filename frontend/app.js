@@ -234,6 +234,7 @@ function initControls() {
   bindNav("btn-flip",  () => {
     state.orientation = state.orientation === "white" ? "black" : "white";
     state.board.setOrientation(state.orientation, true);
+    renderPlayerBars();
   });
 
   document.addEventListener("keydown", (e) => {
@@ -570,6 +571,7 @@ async function analyzePgnStreaming(pgn) {
   state.partialOpening = parsed.opening;
   state.totalPlies = parsed.moves.length;
   renderOpening(parsed.opening);
+  renderPlayerBars();
   showProgress(true, 0, state.totalPlies);
 
   // 2. Stockfish WASM analisa as posições em paralelo (pool de workers).
@@ -630,6 +632,8 @@ function resetForNewAnalysis() {
   document.getElementById("opening-card").style.display = "none";
   document.getElementById("summary-card").style.display = "none";
   document.getElementById("coach-card").style.display = "none";
+  document.getElementById("player-top").style.display = "none";
+  document.getElementById("player-bottom").style.display = "none";
   if (state.evalChart) { state.evalChart.destroy(); state.evalChart = null; }
   // Esconde o gráfico até a nova análise gerar dados (renderEvalChart revela).
   document.querySelector(".chart-wrapper").style.display = "none";
@@ -658,10 +662,57 @@ function currentMoves() {
 function renderAll(fromCache) {
   renderMovesListFull();
   renderOpening(state.partialOpening || state.analysis?.opening);
+  renderPlayerBars();
   renderSummary();
   renderCoach();
   renderEvalChart();
   goToPly(0);
+}
+
+// Mostra os nomes dos jogadores em barras acima/abaixo do tabuleiro,
+// invertendo conforme a orientação. Estilo chess.com: disquinho da cor +
+// nome + ELO (se houver) + chip do resultado se a partida acabou.
+function renderPlayerBars() {
+  const topEl    = document.getElementById("player-top");
+  const bottomEl = document.getElementById("player-bottom");
+  const headers  = state.partialHeaders || state.analysis?.headers;
+  if (!headers) {
+    topEl.style.display = "none";
+    bottomEl.style.display = "none";
+    return;
+  }
+  topEl.style.display = "";
+  bottomEl.style.display = "";
+
+  const whiteName = headers.White || "Brancas";
+  const blackName = headers.Black || "Pretas";
+  const whiteElo  = headers.WhiteElo;
+  const blackElo  = headers.BlackElo;
+  // Result: "1-0" branco ganhou, "0-1" preto ganhou, "1/2-1/2" empate.
+  const res = (headers.Result || "*").trim();
+  const resultFor = (color) => {
+    if (res === "1/2-1/2") return { label: "½", cls: "draw" };
+    if (res === "1-0") return color === "white" ? { label: "1", cls: "win" } : { label: "0", cls: "loss" };
+    if (res === "0-1") return color === "white" ? { label: "0", cls: "loss" } : { label: "1", cls: "win" };
+    return null;
+  };
+
+  // Quem fica embaixo depende da orientação. Padrão "white" = brancas embaixo.
+  const whiteDown = state.orientation === "white";
+  const top    = whiteDown ? { color: "black", name: blackName, elo: blackElo } : { color: "white", name: whiteName, elo: whiteElo };
+  const bottom = whiteDown ? { color: "white", name: whiteName, elo: whiteElo } : { color: "black", name: blackName, elo: blackElo };
+
+  const render = (p) => {
+    const elo = p.elo ? `<span class="player-elo">(${escapeHtml(String(p.elo))})</span>` : "";
+    const r = resultFor(p.color);
+    const chip = r ? `<span class="player-result ${r.cls}">${r.label}</span>` : "";
+    return `<span class="player-disc ${p.color}"></span>
+            <span class="player-name">${escapeHtml(p.name)}</span>
+            ${elo}
+            ${chip}`;
+  };
+  topEl.innerHTML    = render(top);
+  bottomEl.innerHTML = render(bottom);
 }
 
 function renderOpening(opening) {

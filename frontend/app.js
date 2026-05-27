@@ -236,48 +236,6 @@ function initControls() {
     state.board.setOrientation(state.orientation, true);
   });
 
-  // Mute toggle — som dos lances ao navegar pela partida.
-  // Usamos os icones volume-high / volume-off do Material Design Icons. A
-  // diferenca chave: o "off" tem um CORTE DIAGONAL atravessando o speaker
-  // inteiro, criando o mesmo peso visual que as ondas sonoras do "on".
-  // Icones com X pequeno (Feather/Heroicons) deixam o muted parecendo "menor".
-  const SVG_SOUND_ON  = `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" style="display:block"><path d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.84 14,18.7V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.76 16.5,12M3,9V15H7L12,20V4L7,9H3Z"/></svg>`;
-  const SVG_SOUND_OFF = `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" style="display:block"><path d="M12,4L9.91,6.09L12,8.18M4.27,3L3,4.27L7.73,9H3V15H7L12,20V13.27L16.25,17.53C15.58,18.04 14.83,18.46 14,18.7V20.77C15.38,20.45 16.63,19.82 17.68,18.96L19.73,21L21,19.73L12,10.73M19,12C19,12.94 18.8,13.82 18.46,14.64L19.97,16.15C20.62,14.91 21,13.5 21,12C21,7.72 18,4.14 14,3.23V5.29C16.89,6.15 19,8.83 19,12M16.5,12C16.5,10.23 15.5,8.71 14,7.97V10.18L16.45,12.63C16.5,12.43 16.5,12.21 16.5,12Z"/></svg>`;
-  const muteBtn = document.getElementById("btn-mute");
-  const refreshMute = () => {
-    const muted = window.ChessReviewSounds?.isMuted();
-    muteBtn.innerHTML = muted ? SVG_SOUND_OFF : SVG_SOUND_ON;
-    muteBtn.classList.toggle("muted", !!muted);
-    muteBtn.title = muted ? "Som desligado" : "Som ligado";
-  };
-  refreshMute();
-  const doToggleMute = () => {
-    window.ChessReviewSounds?.toggle();
-    refreshMute();
-  };
-  let muteArmed = false;
-  muteBtn.addEventListener("pointerdown", (e) => {
-    if (e.isPrimary === false) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    muteArmed = true;
-  }, { passive: true });
-  muteBtn.addEventListener("pointerup", (e) => {
-    if (!muteArmed) return;
-    muteArmed = false;
-    doToggleMute();
-    e.preventDefault();
-  }, { passive: false });
-  muteBtn.addEventListener("pointercancel", () => { muteArmed = false; }, { passive: true });
-  muteBtn.addEventListener("pointerleave",  () => { muteArmed = false; }, { passive: true });
-  muteBtn.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      doToggleMute();
-    }
-  });
-  // Preload sons em background (não bloqueia init).
-  try { window.ChessReviewSounds?.preload(); } catch {}
-
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
     if (e.key === "ArrowLeft")  document.getElementById("btn-prev").click();
@@ -1034,7 +992,6 @@ function goToPly(ply) {
   }
   const moves = currentMoves();
   ply = Math.max(0, Math.min(ply, moves.length));
-  const prevPly = state.currentPly;
   state.currentPly = ply;
 
   // Tabuleiro (cm-chessboard)
@@ -1042,11 +999,6 @@ function goToPly(ply) {
     state.board.setPosition(state.board.FEN.start, true);
   } else {
     state.board.setPosition(moves[ply - 1].fen_after, true);
-  }
-
-  // Som do lance — só ao avançar/voltar (não ao recarregar a mesma posição).
-  if (ply !== prevPly && ply > 0) {
-    window.ChessReviewSounds?.playMoveSound(moves[ply - 1]);
   }
 
   // Info — revela a caixa (fica escondida até existir partida pra mostrar).

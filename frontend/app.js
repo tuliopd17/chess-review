@@ -227,23 +227,33 @@ function initControls() {
       }
     });
   }
-  bindNav("btn-start", () => goToPly(0));
-  bindNav("btn-end",   () => goToPly(currentMoves().length));
-  bindNav("btn-prev",  () => goToPly(state.currentPly - 1));
-  bindNav("btn-next",  () => goToPly(state.currentPly + 1));
-  bindNav("btn-flip",  () => {
-    state.orientation = state.orientation === "white" ? "black" : "white";
-    state.board.setOrientation(state.orientation, true);
-    renderPlayerBars();
-  });
+  // Actions centralizadas pra serem chamadas tanto pelos botões quanto pelo
+  // teclado. (Antes o keyboard fazia .click() no botão, mas como removemos o
+  // listener de click ao migrar pra pointerup do lichess, .click() virou no-op.)
+  const navActions = {
+    start: () => goToPly(0),
+    end:   () => goToPly(currentMoves().length),
+    prev:  () => goToPly(state.currentPly - 1),
+    next:  () => goToPly(state.currentPly + 1),
+    flip:  () => {
+      state.orientation = state.orientation === "white" ? "black" : "white";
+      state.board.setOrientation(state.orientation, true);
+      renderPlayerBars();
+    },
+  };
+  bindNav("btn-start", navActions.start);
+  bindNav("btn-end",   navActions.end);
+  bindNav("btn-prev",  navActions.prev);
+  bindNav("btn-next",  navActions.next);
+  bindNav("btn-flip",  navActions.flip);
 
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
-    if (e.key === "ArrowLeft")  document.getElementById("btn-prev").click();
-    if (e.key === "ArrowRight") document.getElementById("btn-next").click();
-    if (e.key === "Home")       document.getElementById("btn-start").click();
-    if (e.key === "End")        document.getElementById("btn-end").click();
-    if (e.key === "f" || e.key === "F") document.getElementById("btn-flip").click();
+    if (e.key === "ArrowLeft")  navActions.prev();
+    if (e.key === "ArrowRight") navActions.next();
+    if (e.key === "Home")       navActions.start();
+    if (e.key === "End")        navActions.end();
+    if (e.key === "f" || e.key === "F") navActions.flip();
   });
 }
 

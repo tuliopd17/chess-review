@@ -304,10 +304,13 @@ button.danger:hover { background: var(--danger); color: white; }
   min-width: 0;            /* permite encolher dentro do flex (mobile) */
   aspect-ratio: 1 / 1;     /* mantém o tabuleiro quadrado em qualquer largura */
   border-radius: 6px;
-  overflow: hidden;
+  /* SEM overflow:hidden aqui — os badges precisam transbordar nas casas das
+     bordas pra ficarem inteiros. O clip arredondado vai DIRETO no SVG, abaixo. */
   box-shadow: var(--shadow-card);
 }
 #board { width: 100%; height: 100%; }
+/* Arredonda os cantos do SVG do tabuleiro sem clipar os overlays (badges). */
+.cm-chessboard { clip-path: inset(0 round 6px); border-radius: 6px; }
 
 /* =====  cm-chessboard customizations  =====
    Markers usam <use href="#markerXxx"> dentro de <g class="markers">.

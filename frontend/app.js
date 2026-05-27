@@ -196,37 +196,35 @@ function initControls() {
   // ASSIM que o dedo encosta — sem esperar liberar, sem esperar o navegador
   // decidir se é tap ou scroll. Dedup de 80ms evita disparo duplicado pelo
   // click subsequente.
+  // Padrão lichess (ui/lib/src/pointer.ts): dispara em POINTERUP com
+  // { passive: false } + preventDefault. O preventDefault no pointerup faz o
+  // navegador NÃO emitir o click sintético — assim não tem como disparar duas
+  // vezes. pointerdown só serve pra "armar" (e poder cancelar se o usuário
+  // arrastar pra fora). Nada de listener no click — flag-based suppress
+  // falhava no iOS porque o pointerdown default é passive (preventDefault vira
+  // no-op) e re-renders entre pointerdown e click invalidam o estado.
   function bindNav(btnId, action) {
     const btn = document.getElementById(btnId);
-    // Dedup por FLAG: o click sintético no iOS dispara só quando o usuário
-    // libera o dedo (centenas de ms depois do pointerdown), longe demais pra
-    // um dedup baseado em timestamp curto. Marcamos a flag em pointerdown e
-    // o click é suprimido. Cancelamos a flag em pointercancel/leave (usuário
-    // arrastou o dedo pra fora) ou quando vem um novo pointerdown (evita timer
-    // velho zerar a flag durante o próximo tap).
-    let suppressClick = false;
-    let clearTimer = null;
-    const armSuppress = () => {
-      suppressClick = true;
-      if (clearTimer) clearTimeout(clearTimer);
-      clearTimer = setTimeout(() => { suppressClick = false; clearTimer = null; }, 800);
-    };
-    const disarm = () => {
-      suppressClick = false;
-      if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
-    };
+    let armed = false;
     btn.addEventListener("pointerdown", (e) => {
       if (e.isPrimary === false) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.preventDefault();
-      armSuppress();
+      armed = true;
+    }, { passive: true });
+    btn.addEventListener("pointerup", (e) => {
+      if (!armed) return;
+      armed = false;
       action();
-    });
-    btn.addEventListener("pointercancel", disarm);
-    btn.addEventListener("pointerleave", disarm);
-    btn.addEventListener("click", () => {
-      if (suppressClick) { disarm(); return; }
-      action();
+      e.preventDefault(); // suprime o ghost click; precisa de passive:false
+    }, { passive: false });
+    btn.addEventListener("pointercancel", () => { armed = false; }, { passive: true });
+    btn.addEventListener("pointerleave",  () => { armed = false; }, { passive: true });
+    // Acessibilidade por teclado (Enter / Espaço no botão focado).
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        action();
+      }
     });
   }
   bindNav("btn-start", () => goToPly(0));
@@ -256,29 +254,25 @@ function initControls() {
     window.ChessReviewSounds?.toggle();
     refreshMute();
   };
-  let muteSuppress = false;
-  let muteTimer = null;
-  const muteArm = () => {
-    muteSuppress = true;
-    if (muteTimer) clearTimeout(muteTimer);
-    muteTimer = setTimeout(() => { muteSuppress = false; muteTimer = null; }, 800);
-  };
-  const muteDisarm = () => {
-    muteSuppress = false;
-    if (muteTimer) { clearTimeout(muteTimer); muteTimer = null; }
-  };
+  let muteArmed = false;
   muteBtn.addEventListener("pointerdown", (e) => {
     if (e.isPrimary === false) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    muteArmed = true;
+  }, { passive: true });
+  muteBtn.addEventListener("pointerup", (e) => {
+    if (!muteArmed) return;
+    muteArmed = false;
+    doToggleMute();
     e.preventDefault();
-    muteArm();
-    doToggleMute();
-  });
-  muteBtn.addEventListener("pointercancel", muteDisarm);
-  muteBtn.addEventListener("pointerleave", muteDisarm);
-  muteBtn.addEventListener("click", () => {
-    if (muteSuppress) { muteDisarm(); return; }
-    doToggleMute();
+  }, { passive: false });
+  muteBtn.addEventListener("pointercancel", () => { muteArmed = false; }, { passive: true });
+  muteBtn.addEventListener("pointerleave",  () => { muteArmed = false; }, { passive: true });
+  muteBtn.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      doToggleMute();
+    }
   });
   // Preload sons em background (não bloqueia init).
   try { window.ChessReviewSounds?.preload(); } catch {}

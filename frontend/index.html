@@ -3,11 +3,72 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chess Review — análise gratuita de partidas</title>
+  <title>Chess Review — Análise grátis de partidas de xadrez</title>
+  <meta name="description" content="Revise suas partidas de xadrez de graça. Importe PGN, Chess.com ou Lichess e veja a classificação de cada lance (Brilhante, Erro, Capivarada) no estilo Game Review." />
+  <meta name="keywords" content="análise de xadrez, review de partida xadrez, PGN online, chess review brasil, classificação de lances, game review grátis, stockfish online" />
+  <meta name="author" content="Chess Review" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="theme-color" content="#262421" />
+  <link rel="canonical" href="https://www.chessreview.com.br/" />
+
+  <!-- Open Graph (Facebook, WhatsApp, Discord, LinkedIn) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="pt_BR" />
+  <meta property="og:site_name" content="Chess Review" />
+  <meta property="og:title" content="Chess Review — Análise grátis de partidas de xadrez" />
+  <meta property="og:description" content="Importe PGN, Chess.com ou Lichess e veja a classificação de cada lance no estilo Game Review. 100% grátis, roda no navegador." />
+  <meta property="og:url" content="https://www.chessreview.com.br/" />
+  <meta property="og:image" content="https://www.chessreview.com.br/static/images/logo-with-name.png" />
+  <meta property="og:image:alt" content="Chess Review — análise de partidas de xadrez" />
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Chess Review — Análise grátis de partidas de xadrez" />
+  <meta name="twitter:description" content="Importe PGN, Chess.com ou Lichess e veja a classificação de cada lance no estilo Game Review." />
+  <meta name="twitter:image" content="https://www.chessreview.com.br/static/images/logo-with-name.png" />
 
   <!-- Ícone da aba (logo sem o nome) -->
   <link rel="icon" type="image/png" href="/static/images/logo-without-name.png" />
   <link rel="apple-touch-icon" href="/static/images/logo-without-name.png" />
+
+  <!-- JSON-LD: schema.org WebApplication + Organization (rich results no Google) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebApplication",
+        "name": "Chess Review",
+        "url": "https://www.chessreview.com.br/",
+        "description": "Ferramenta online gratuita para análise e revisão de partidas de xadrez no estilo Game Review do chess.com. Importa PGN, Chess.com e Lichess.",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web Browser",
+        "inLanguage": "pt-BR",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "BRL" },
+        "featureList": [
+          "Análise com Stockfish rodando no navegador",
+          "Classificação de lances (Brilhante, Ótimo, Melhor, Bom, Imprecisão, Erro, Capivarada)",
+          "Importação de PGN, Chess.com e Lichess",
+          "Detecção automática de abertura",
+          "Acurácia da partida estilo Lichess"
+        ]
+      },
+      {
+        "@type": "Organization",
+        "name": "Chess Review",
+        "url": "https://www.chessreview.com.br/",
+        "logo": "https://www.chessreview.com.br/static/images/logo-with-name.png"
+      },
+      {
+        "@type": "WebSite",
+        "name": "Chess Review",
+        "url": "https://www.chessreview.com.br/",
+        "inLanguage": "pt-BR"
+      }
+    ]
+  }
+  </script>
 
   <!-- cm-chessboard CSS + extensions -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/chessboard.css" />

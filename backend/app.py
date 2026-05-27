@@ -262,3 +262,33 @@ if FRONTEND_DIR.exists():
             media_type="text/html",
             headers={"Cache-Control": "no-cache, must-revalidate"},
         )
+
+    # ---------- SEO: robots.txt e sitemap.xml ----------
+    # Permite indexação total, aponta o sitemap. Não bloqueia /static/ (Google
+    # precisa do JS/CSS pra renderizar a página) nem /sf/ (Stockfish WASM).
+    @app.get("/robots.txt", include_in_schema=False)
+    async def robots_txt():
+        body = (
+            "User-agent: *\n"
+            "Allow: /\n"
+            "Disallow: /api/\n"
+            "\n"
+            "Sitemap: https://www.chessreview.com.br/sitemap.xml\n"
+        )
+        return Response(content=body, media_type="text/plain")
+
+    @app.get("/sitemap.xml", include_in_schema=False)
+    async def sitemap_xml():
+        # Site tem só a home (SPA). Quando adicionar páginas (per-abertura,
+        # tutoriais, glossário), inclui aqui — uma <url> por rota.
+        body = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            '  <url>\n'
+            '    <loc>https://www.chessreview.com.br/</loc>\n'
+            '    <changefreq>weekly</changefreq>\n'
+            '    <priority>1.0</priority>\n'
+            '  </url>\n'
+            '</urlset>\n'
+        )
+        return Response(content=body, media_type="application/xml")

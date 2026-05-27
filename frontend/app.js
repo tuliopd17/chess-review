@@ -189,13 +189,30 @@ function initTabs() {
 }
 
 function initControls() {
-  // Wrap dos handlers de controle: chama goToPly e dá blur() no botão.
-  // No iOS Safari, um botão que ficou em :focus depois de um tap às vezes exige
-  // um "tap pra liberar" antes de aceitar o próximo — daí o usuário precisava
-  // tocar 2-3x na seta de "próximo". Limpar o foco resolve.
+  // Liga os controles a "pointerdown" em vez de "click". No mobile (iOS Safari
+  // principalmente), o pipeline touchstart→touchend→click pode falhar de várias
+  // formas: focus stuck, tap highlight bloqueando o próximo toque, 300ms de
+  // delay residual mesmo com touch-action:manipulation, etc. pointerdown dispara
+  // ASSIM que o dedo encosta — sem esperar liberar, sem esperar o navegador
+  // decidir se é tap ou scroll. Dedup de 80ms evita disparo duplicado pelo
+  // click subsequente.
   function bindNav(btnId, action) {
     const btn = document.getElementById(btnId);
-    btn.onclick = () => { action(); btn.blur(); };
+    let lastFire = 0;
+    const fire = () => {
+      const now = performance.now();
+      if (now - lastFire < 80) return;
+      lastFire = now;
+      action();
+    };
+    btn.addEventListener("pointerdown", (e) => {
+      if (e.isPrimary === false) return;
+      // Só responde ao botão primário do mouse / toque primário.
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      fire();
+    });
+    // Fallback pra teclado (Enter/Espaço gera um click sintético).
+    btn.addEventListener("click", fire);
   }
   bindNav("btn-start", () => goToPly(0));
   bindNav("btn-end",   () => goToPly(currentMoves().length));
@@ -220,11 +237,21 @@ function initControls() {
     muteBtn.title = muted ? "Som desligado" : "Som ligado";
   };
   refreshMute();
-  muteBtn.onclick = () => {
+  // Mesmo padrão pointerdown + dedup do bindNav, pra também responder no 1o tap.
+  let muteLastFire = 0;
+  const fireMute = () => {
+    const now = performance.now();
+    if (now - muteLastFire < 80) return;
+    muteLastFire = now;
     window.ChessReviewSounds?.toggle();
     refreshMute();
-    muteBtn.blur(); // libera :focus/:active no iOS pra próximo tap responder rápido
   };
+  muteBtn.addEventListener("pointerdown", (e) => {
+    if (e.isPrimary === false) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    fireMute();
+  });
+  muteBtn.addEventListener("click", fireMute);
   // Preload sons em background (não bloqueia init).
   try { window.ChessReviewSounds?.preload(); } catch {}
 

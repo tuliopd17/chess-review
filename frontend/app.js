@@ -198,21 +198,36 @@ function initControls() {
   // click subsequente.
   function bindNav(btnId, action) {
     const btn = document.getElementById(btnId);
-    let lastFire = 0;
-    const fire = () => {
-      const now = performance.now();
-      if (now - lastFire < 80) return;
-      lastFire = now;
-      action();
+    // Dedup por FLAG: o click sintético no iOS dispara só quando o usuário
+    // libera o dedo (centenas de ms depois do pointerdown), longe demais pra
+    // um dedup baseado em timestamp curto. Marcamos a flag em pointerdown e
+    // o click é suprimido. Cancelamos a flag em pointercancel/leave (usuário
+    // arrastou o dedo pra fora) ou quando vem um novo pointerdown (evita timer
+    // velho zerar a flag durante o próximo tap).
+    let suppressClick = false;
+    let clearTimer = null;
+    const armSuppress = () => {
+      suppressClick = true;
+      if (clearTimer) clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => { suppressClick = false; clearTimer = null; }, 800);
+    };
+    const disarm = () => {
+      suppressClick = false;
+      if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
     };
     btn.addEventListener("pointerdown", (e) => {
       if (e.isPrimary === false) return;
-      // Só responde ao botão primário do mouse / toque primário.
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      fire();
+      e.preventDefault();
+      armSuppress();
+      action();
     });
-    // Fallback pra teclado (Enter/Espaço gera um click sintético).
-    btn.addEventListener("click", fire);
+    btn.addEventListener("pointercancel", disarm);
+    btn.addEventListener("pointerleave", disarm);
+    btn.addEventListener("click", () => {
+      if (suppressClick) { disarm(); return; }
+      action();
+    });
   }
   bindNav("btn-start", () => goToPly(0));
   bindNav("btn-end",   () => goToPly(currentMoves().length));
@@ -237,21 +252,34 @@ function initControls() {
     muteBtn.title = muted ? "Som desligado" : "Som ligado";
   };
   refreshMute();
-  // Mesmo padrão pointerdown + dedup do bindNav, pra também responder no 1o tap.
-  let muteLastFire = 0;
-  const fireMute = () => {
-    const now = performance.now();
-    if (now - muteLastFire < 80) return;
-    muteLastFire = now;
+  const doToggleMute = () => {
     window.ChessReviewSounds?.toggle();
     refreshMute();
+  };
+  let muteSuppress = false;
+  let muteTimer = null;
+  const muteArm = () => {
+    muteSuppress = true;
+    if (muteTimer) clearTimeout(muteTimer);
+    muteTimer = setTimeout(() => { muteSuppress = false; muteTimer = null; }, 800);
+  };
+  const muteDisarm = () => {
+    muteSuppress = false;
+    if (muteTimer) { clearTimeout(muteTimer); muteTimer = null; }
   };
   muteBtn.addEventListener("pointerdown", (e) => {
     if (e.isPrimary === false) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    fireMute();
+    e.preventDefault();
+    muteArm();
+    doToggleMute();
   });
-  muteBtn.addEventListener("click", fireMute);
+  muteBtn.addEventListener("pointercancel", muteDisarm);
+  muteBtn.addEventListener("pointerleave", muteDisarm);
+  muteBtn.addEventListener("click", () => {
+    if (muteSuppress) { muteDisarm(); return; }
+    doToggleMute();
+  });
   // Preload sons em background (não bloqueia init).
   try { window.ChessReviewSounds?.preload(); } catch {}
 

@@ -385,20 +385,30 @@ button.danger:hover { background: var(--danger); color: white; }
 }
 .controls button:active { transform: none; }
 .controls button:focus { outline: none; }
-/* Mute: discreto, sem flex-grow — botão pequeno no fim.
-   Tamanho FIXO pra evitar o 🔇 (mais estreito) encolher visualmente vs 🔊. */
+/* Mute: tamanho fixo absoluto. Tudo zerado/forçado pra resistir aos resets
+   do iOS Safari (que aplica padding/appearance proprios em <button>). */
 .controls .mute-btn {
   flex: 0 0 48px;
   width: 48px;
+  height: 46px;
   max-width: 48px;
   min-width: 48px;
-  font-size: 1rem;
-  opacity: 0.7;
-  padding-left: 0;
-  padding-right: 0;
+  min-height: 46px;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  opacity: 0.85;
+  /* SVG centralizado dentro do botao */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .controls .mute-btn:hover { opacity: 1; }
-.controls .mute-btn.muted { opacity: 0.4; }
+/* Sem mudanca de opacity no estado mutado — o icone com X ja comunica
+   "som desligado" sem precisar fazer o badge "parecer apagado". */
+.controls .mute-btn.muted { opacity: 0.85; }
+.controls .mute-btn svg { display: block; width: 20px; height: 20px; }
 
 #move-info {
   width: 100%;

@@ -611,14 +611,14 @@ async function analyzePgnStreaming(pgn) {
     if (runId !== state.analysisRunId) return;
     pool.cancelAll(); // limpa qualquer batch anterior antes de começar
 
-    // A análise da partida usa depth menor (e roda em paralelo); o painel ao
-    // vivo é que usa a profundidade cheia escolhida no seletor.
-    const depthSel = parseInt(document.getElementById("engine-depth-sel").value, 10);
-    const depth = depthSel > 0 ? Math.min(depthSel, 14) : 14;
+    // A profundidade da análise é ADAPTATIVA por posição (definida dentro de
+    // analyzeGame): finais vão fundo — onde o ganho só aparece a ~depth 22+ e é
+    // barato calcular —, meio-jogo cheio fica mais raso pra não arrastar. O
+    // seletor de profundidade é só pro engine AO VIVO do painel lateral.
     const result = await ChessReviewAnalysis.analyzeGame(
       parsed,
       pool,
-      { depth },
+      {},
       (moveData, idx, total) => {
         if (runId !== state.analysisRunId) return; // descarta callbacks de análise antiga
         state.partialMoves.push(moveData);

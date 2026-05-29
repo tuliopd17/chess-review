@@ -230,7 +230,8 @@
         log(">> setoption MultiPV", multipv);
         this.worker.postMessage(`setoption name MultiPV value ${multipv}`);
         this.worker.postMessage(`position fen ${fen}`);
-        if (opts.depth)         this.worker.postMessage(`go depth ${opts.depth}`);
+        if (opts.nodes)         this.worker.postMessage(`go nodes ${opts.nodes}`);
+        else if (opts.depth)    this.worker.postMessage(`go depth ${opts.depth}`);
         else if (opts.movetime) this.worker.postMessage(`go movetime ${opts.movetime}`);
         else                    this.worker.postMessage("go infinite");
       });

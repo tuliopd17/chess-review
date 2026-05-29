@@ -21,6 +21,40 @@
 (function () {
   const MATE_SCORE_CP = 10000;
 
+  // ===== Orçamento de busca: NÓS por posição (estilo Lichess) =====
+  //
+  // Profundidade FIXA é um péssimo botão: num final ganho o engine só "enxerga"
+  // o ganho lá pela profundidade ~22+ (a depth 14/18 um final ganho aparece como
+  // mísero +2), mas rodar a partida inteira a depth alta é lento demais. A saída
+  // é limitar por NÓS, não por profundidade: com a mesma conta de nós, um final
+  // (pouca ramificação) chega naturalmente fundo — e fiel —, enquanto o meio-
+  // jogo cheio para numa profundidade mais modesta. Bônus: é DETERMINÍSTICO
+  // (mesma posição → mesmo resultado, independe da carga da CPU).
+  //
+  // E o orçamento é ADAPTATIVO por nº de peças: final tem nó barato (avaliação
+  // simples → alto nps) e precisa de profundidade, então leva MAIS nós; abertura
+  // / meio-jogo cheio tem nó caro e não precisa ir tão fundo pra avaliação ser
+  // fiel, então leva MENOS. Resultado: finais fiéis E tempo total mais curto.
+  function countPieces(fen) {
+    let n = 0;
+    const board = (fen || "").split(" ")[0];
+    for (let i = 0; i < board.length; i++) {
+      const c = board[i];
+      if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z")) n++;
+    }
+    return n;
+  }
+
+  function nodeBudget(fen, floor) {
+    const n = countPieces(fen);
+    let b;
+    if (n <= 8) b = 2500000;       // final cru: barato por nó, vai fundo e fiel
+    else if (n <= 14) b = 1300000; // final / transição
+    else if (n <= 22) b = 800000;  // meio-jogo
+    else b = 600000;               // abertura / meio-jogo cheio: rápido
+    return Math.max(b, floor || 0);
+  }
+
   // ===== Conversões eval =====
 
   function cpToWinrate(cp) {
@@ -320,19 +354,6 @@
     }
   }
 
-  // Descreve em palavras a avaliação RESULTANTE da posição, do ponto de vista de
-  // quem moveu (eval_after_cp já vem nesse POV). É o que dá "substância na
-  // posição" pros lances que não têm uma consequência tática óbvia.
-  function evalPhrase(cp) {
-    const a = Math.abs(cp);
-    if (a < 40) return "a posição segue equilibrada";
-    const who = cp > 0 ? "você fica" : "o oponente fica";
-    if (a < 120) return `${who} um pouco melhor`;
-    if (a < 250) return `${who} com vantagem`;
-    if (a < 500) return `${who} claramente melhor`;
-    if (a < 900) return `${who} com vantagem grande`;
-    return cp > 0 ? "você fica com a posição ganha" : "a posição fica perdida pra você";
-  }
 
   // Casas iniciais das peças menores, pra detectar desenvolvimento na abertura.
   const MINOR_START = {
@@ -450,22 +471,21 @@
     const refMat = lineMaterial(move.fen_after, move.refutation_pv_uci, pov);   // o que entrega
     const bestMat = lineMaterial(move.fen_before, move.best_pv_uci, pov);       // o que ganhava
 
-    // Substância posicional pros lances bons: o que o lance FAZ + a avaliação
-    // resultante em palavras (do POV de quem moveu).
+    // Substância dos lances bons: o que o lance FAZ na posição (a avaliação em
+    // si fica por conta da barra/gráfico de eval — não repetimos "você fica
+    // melhor" no texto).
     const action = describeAction(move);
-    const ev = evalPhrase(move.eval_after_cp);
 
     // ---------- Lances POSITIVOS ----------
     if (cls === "brilliant") {
       const sac = movedPieceName(move) || "material";
       return playerHasMate
         ? `${san} é brilhante! Sacrifica ${sac} e força o mate em ${mateDist} — difícil de enxergar.`
-        : `${san} é brilhante! Sacrifica ${sac} e, mesmo assim, ${ev} — um recurso difícil de achar.`;
+        : `${san} é brilhante! Sacrifica ${sac} por uma compensação que vale muito mais — difícil de enxergar.`;
     }
     if (cls === "great") {
-      if (playerHasMate) return `${san} é o lance da posição: leva ao mate forçado em ${mateDist}, e era a única que servia.`;
-      const hold = move.eval_after_cp >= 0 ? "mantém você por cima" : "segura o jogo";
-      return `${san} é o lance da posição — era praticamente a única jogada que ${hold}, e ${ev}.`;
+      if (playerHasMate) return `${san} é o lance da posição: leva ao mate forçado em ${mateDist}.`;
+      return `${san} é o lance da posição — era praticamente a única jogada boa aqui.`;
     }
     if (cls === "best" || cls === "excellent") {
       if (playerHasMate) return `${san} encaminha o mate forçado em ${mateDist}; siga a linha indicada e não há defesa.`;
@@ -482,7 +502,7 @@
             `${san} é praticamente o melhor que havia`,
             `${san} é muito bom`,
           ]);
-      return action ? `${lead}: ${action}, e ${ev}.` : `${lead} — ${ev}.`;
+      return action ? `${lead}: ${action}.` : `${lead}.`;
     }
     if (cls === "good") {
       const lead = pick([
@@ -491,7 +511,7 @@
         `${san} mantém o controle`,
         `${san} é razoável`,
       ]);
-      return action ? `${lead}: ${action}, e ${ev}.` : `${lead} — ${ev}.`;
+      return action ? `${lead}: ${action}.` : `${lead}.`;
     }
 
     // ---------- Lances NEGATIVOS ----------
@@ -527,10 +547,6 @@
 
     const winDrop = Math.round(cpToWinPercent(move.best_eval_cp) - cpToWinPercent(move.eval_after_cp));
     const dropTxt = winDrop >= 4 ? ` (perde ~${winDrop}% de chance de vitória)` : "";
-    // Avaliação resultante anexada aos lances graves (exceto quando já é mate,
-    // que é terminal e dispensa).
-    const evTail = (!oppHasMate && (cls === "blunder" || cls === "mistake"))
-      ? `; ${ev}` : "";
 
     switch (cls) {
       case "inaccuracy":
@@ -539,11 +555,11 @@
           : `${san} é uma imprecisão${dropTxt}${hasBest ? `; ${best} mantinha as rédeas` : ""}.`;
       case "mistake":
         return why
-          ? `${san} é um erro — ${why}${evTail}.`
+          ? `${san} é um erro — ${why}.`
           : `${san} é um erro${dropTxt}${hasBest ? `; ${best} era a melhor pedida` : ""}.`;
       case "blunder":
         return why
-          ? `Capivarada! ${san} ${why}${evTail}.`
+          ? `Capivarada! ${san} ${why}.`
           : `Capivarada! ${san} entrega a posição${dropTxt}${hasBest ? ` — ${best} era necessário` : ""}.`;
       case "miss":
         return why
@@ -593,7 +609,9 @@
    * @returns {Promise<object>} payload completo com stats
    */
   async function analyzeGame(parsed, pool, opts, onMove) {
-    const depth = opts.depth || 14;
+    // Orçamento de busca por NÓS, adaptativo por posição (ver nodeBudget).
+    // opts.nodes vira um PISO opcional.
+    const nodeFloor = opts.nodes || 0;
     const multipv = 2; // precisamos do 2º melhor pra detectar Great
     const moves = parsed.moves;
     const opening = parsed.opening;
@@ -610,7 +628,7 @@
 
       // Só as posições "antes" precisam de MultiPV 2 (pra detectar Great); a
       // posição final só precisa do eval.
-      const optsFor = (i) => ({ depth, multipv: i < N ? multipv : 1 });
+      const optsFor = (i) => ({ nodes: nodeBudget(positions[i], nodeFloor), multipv: i < N ? multipv : 1 });
 
       function parsePosInfo(info) {
         const best = info && info[1];

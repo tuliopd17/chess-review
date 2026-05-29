@@ -144,10 +144,14 @@
     return Math.round(elo);
   }
 
-  // ===== Detecção de sacrifício (proxy simples) =====
-  // Critério: lance move peça mais cara pra casa atacada por peça mais barata
-  // e o eval permanece favorável após o lance.
-  // Usamos chess.js pra inspecionar atacantes/defensores.
+  // ===== Detecção de sacrifício (proxy estático) =====
+  // Critério: a peça que vai pra casa de destino fica atacada por uma peça mais
+  // barata E o material LÍQUIDO arriscado (valor da peça − o que ela capturou)
+  // é grande. Esse desconto é o que separa um sacrifício de uma simples troca:
+  // BxN com o bispo recapturável por peão NÃO é sacrifício (330 − 320 ≈ 0), mas
+  // Dxh7+ entregando a dama por um peão é (900 − 100 = 800). É só um pré-filtro
+  // barato; a confirmação de verdade vem do material líquido da linha principal
+  // (net_material) calculado em analyzeGame.
   const PV = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
 
   function detectSacrifice(fenBefore, uci) {
@@ -157,6 +161,8 @@
       const piece = c.get(from);
       if (!piece) return false;
       const myValue = PV[piece.type] || 0;
+      const target = c.get(to);
+      const capturedValue = target ? (PV[target.type] || 0) : 0;
       const moveRes = c.move({ from, to, promotion: uci.slice(4) || "q" });
       if (!moveRes) return false;
       // attackers do oponente sobre a casa de destino, depois do lance.
@@ -172,7 +178,8 @@
       if (!attackers.length) return false;
       // Menor valor do atacante.
       const cheapest = Math.min(...attackers.map(a => PV[a.piece] || 999));
-      return cheapest < myValue && (myValue - cheapest) >= 200;
+      const risked = myValue - capturedValue; // material líquido em risco
+      return cheapest < myValue && risked >= 200;
     } catch (e) {
       return false;
     }
@@ -195,20 +202,27 @@
     const loss = wrBest - wrAfter;
     const isBest = move.san === move.best_move_san;
 
-    // Brilliant: sacrifício + lance bom + posição não já vencida.
+    // Brilliant: sacrifício REAL + lance bom + posição não já vencida.
     // best_eval_cp aqui é a melhor avaliação ANTES do lance (POV de quem moveu).
     // Critério estilo chess.com: não pode estar já ganhando (< +2 ≈ 200cp) — se
     // já está crushing, sacrifício deixa de ser "brilhante", vira "óbvio".
     // Também não pode estar perdido (> -300cp): se está -3 e sacrifica, é a
     // única chance de jogo, não brilhantismo.
-    if (move.is_sacrifice && loss < THRESHOLDS.excellent) {
+    //
+    // O gate decisivo é net_material (material líquido da linha principal, em
+    // peões, do POV de quem moveu): só é sacrifício se o jogador REALMENTE fica
+    // material abaixo após a melhor resposta do oponente — e mesmo assim o eval
+    // se mantém são (compensação). Isso elimina o bug de troca de peças virando
+    // "brilhante": numa troca o saldo é ~0, então net_material não passa.
+    const reallySacked = move.net_material != null && move.net_material <= -1.5;
+    if (move.is_sacrifice && reallySacked && loss < THRESHOLDS.excellent) {
       if (move.best_eval_cp > -300 && move.best_eval_cp < 200) {
         return "brilliant";
       }
     }
 
     if (isBest) {
-      if (isGreat(move)) return "great";
+      if (isGreat(move, prevMove)) return "great";
       return "best";
     }
 
@@ -226,10 +240,20 @@
     return "blunder";
   }
 
-  function isGreat(move) {
+  // "Ótimo lance" (Great) = a ÚNICA jogada boa numa posição crítica (folga
+  // grande pro 2º melhor), e não algo óbvio. Recaptura simples (o oponente
+  // capturou nessa casa e você está só retomando) é óbvia demais pra ser
+  // "ótima" — vira "melhor lance". Mesmo critério vale pra trocas equilibradas.
+  function isGreat(move, prevMove) {
     if (move.second_best_eval_cp == null) return false;
     if (Math.abs(move.best_eval_cp) > 800) return false;
-    return (move.best_eval_cp - move.second_best_eval_cp) > 200;
+    if ((move.best_eval_cp - move.second_best_eval_cp) <= 200) return false;
+    // Recaptura óbvia na mesma casa? Não é "ótimo".
+    if (prevMove && prevMove.is_capture && prevMove.to === move.to) return false;
+    // Troca/captura que não arrisca material (saldo ≥ 0) também não é "ótimo":
+    // a folga pro 2º melhor vem só de "tem que recapturar", nada de especial.
+    if (move.is_capture && move.net_material != null && move.net_material >= -0.5) return false;
+    return true;
   }
 
   // ===== Comentários por lance =====
@@ -296,6 +320,78 @@
     }
   }
 
+  // Descreve em palavras a avaliação RESULTANTE da posição, do ponto de vista de
+  // quem moveu (eval_after_cp já vem nesse POV). É o que dá "substância na
+  // posição" pros lances que não têm uma consequência tática óbvia.
+  function evalPhrase(cp) {
+    const a = Math.abs(cp);
+    if (a < 40) return "a posição segue equilibrada";
+    const who = cp > 0 ? "você fica" : "o oponente fica";
+    if (a < 120) return `${who} um pouco melhor`;
+    if (a < 250) return `${who} com vantagem`;
+    if (a < 500) return `${who} claramente melhor`;
+    if (a < 900) return `${who} com vantagem grande`;
+    return cp > 0 ? "você fica com a posição ganha" : "a posição fica perdida pra você";
+  }
+
+  // Casas iniciais das peças menores, pra detectar desenvolvimento na abertura.
+  const MINOR_START = {
+    N: ["b1", "g1", "b8", "g8"],
+    B: ["c1", "f1", "c8", "f8"],
+  };
+
+  // O lance ataca a dama inimiga? (a peça que parou em `to` mira a casa da dama
+  // adversária). Usa o truque de trocar o lado a mover, como em detectSacrifice.
+  function attacksEnemyQueen(move) {
+    try {
+      const c = new Chess(move.fen_after);
+      const my = move.color === "white" ? "w" : "b";
+      const board = c.board();
+      let qSq = null;
+      for (let r = 0; r < 8 && !qSq; r++) {
+        for (let f = 0; f < 8; f++) {
+          const p = board[r][f];
+          if (p && p.type === "q" && p.color !== my) { qSq = "abcdefgh"[f] + (8 - r); break; }
+        }
+      }
+      if (!qSq) return false;
+      const parts = c.fen().split(" ");
+      parts[1] = my; parts[3] = "-"; // lado a mover = quem jogou; sem en passant
+      return new Chess(parts.join(" "))
+        .moves({ square: move.to, verbose: true })
+        .some((m) => m.to === qSq);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Frase curta do que o lance FAZ na posição (ação concreta), pra enriquecer os
+  // comentários de lances bons. Devolve null quando não há nada de notável.
+  function describeAction(move) {
+    const t = move.san.replace(/[+#!?]/g, "");
+    if (t === "O-O") return "leva o rei pra segurança do roque";
+    if (t === "O-O-O") return "faz o roque grande e ativa a torre";
+    if (t.includes("=")) {
+      const promo = (t.split("=")[1] || "")[0];
+      return `promove ${PIECE_PT_DEF[(promo || "").toLowerCase()] || "a peça"}`;
+    }
+    const parts = [];
+    if (move.is_capture && PIECE_PT_DEF[move.captured_piece]) {
+      parts.push(`captura ${PIECE_PT_DEF[move.captured_piece]}`);
+    }
+    if ((move.ply || 99) <= 20) {
+      const from = (move.uci || "").slice(0, 2);
+      if (/^N/.test(t) && MINOR_START.N.includes(from)) parts.push("desenvolve o cavalo");
+      else if (/^B/.test(t) && MINOR_START.B.includes(from)) parts.push("desenvolve o bispo");
+      else if (!/^[NBRQK]/.test(t) && ["e4", "d4", "e5", "d5"].includes(t.slice(-2))) {
+        parts.push("finca um peão no centro");
+      }
+    }
+    if (attacksEnemyQueen(move)) parts.push("ataca a dama");
+    if (move.is_check && !parts.some((p) => p.includes("xeque"))) parts.push("dá xeque");
+    return parts.length ? parts.slice(0, 2).join(" e ") : null;
+  }
+
   function generateComment(move, opening) {
     const cls = move.classification;
     const san = move.san;
@@ -327,37 +423,38 @@
     const refMat = lineMaterial(move.fen_after, move.refutation_pv_uci, pov);   // o que entrega
     const bestMat = lineMaterial(move.fen_before, move.best_pv_uci, pov);       // o que ganhava
 
+    // Substância posicional pros lances bons: o que o lance FAZ + a avaliação
+    // resultante em palavras (do POV de quem moveu).
+    const action = describeAction(move);
+    const ev = evalPhrase(move.eval_after_cp);
+
     // ---------- Lances POSITIVOS ----------
     if (cls === "brilliant") {
-      const sac = movedPieceName(move);
-      const base = sac
-        ? `${san} é brilhante — sacrifica ${sac} por algo bem maior.`
-        : `${san} é brilhante! Um recurso difícil de enxergar.`;
-      return playerHasMate ? `${base} Leva a mate forçado em ${mateDist}.` : base;
+      const sac = movedPieceName(move) || "material";
+      return playerHasMate
+        ? `${san} é brilhante! Sacrifica ${sac} e força o mate em ${mateDist} — difícil de enxergar.`
+        : `${san} é brilhante! Sacrifica ${sac} e, mesmo assim, ${ev} — um recurso difícil de achar.`;
     }
     if (cls === "great") {
-      return pick([
-        `${san} é a jogada que segura tudo — era praticamente a única boa.`,
-        `${san} é excepcional: qualquer outra coisa estragava a posição.`,
-      ]);
+      if (playerHasMate) return `${san} é o lance da posição: leva ao mate forçado em ${mateDist}, e era a única que servia.`;
+      const hold = move.eval_after_cp >= 0 ? "mantém você por cima" : "segura o jogo";
+      return `${san} é o lance da posição — era praticamente a única jogada que ${hold}, e ${ev}.`;
     }
     if (cls === "best" || cls === "excellent") {
-      if (playerHasMate) return `${san} encaminha o mate forçado em ${mateDist}.`;
-      if (move.is_capture && PIECE_PT_DEF[move.captured_piece]) {
-        return `${san} captura ${PIECE_PT_DEF[move.captured_piece]} e é o melhor da posição.`;
-      }
-      if (move.is_check) return `${san} dá xeque e é o lance mais preciso aqui.`;
-      return cls === "best"
-        ? pick([`${san} é a melhor jogada da posição.`, `${san} era o lance certo aqui.`])
-        : pick([`${san} é excelente, quase no nível da melhor opção.`, `${san} é uma ótima escolha.`]);
+      if (playerHasMate) return `${san} encaminha o mate forçado em ${mateDist}; siga a linha indicada e não há defesa.`;
+      const lead = cls === "best"
+        ? `${san} é a melhor jogada da posição`
+        : `${san} é excelente, quase no nível da melhor opção`;
+      return action ? `${lead}: ${action}, e ${ev}.` : `${lead} — ${ev}.`;
     }
     if (cls === "good") {
-      return pick([`${san} é um bom lance, mantém a posição saudável.`, `${san} é uma jogada sólida.`]);
+      return action ? `${san} é um bom lance: ${action}, e ${ev}.` : `${san} é um bom lance — ${ev}.`;
     }
 
     // ---------- Lances NEGATIVOS ----------
-    // Tenta uma explicação CONCRETA da consequência (a parte "preciso"); só cai
-    // no texto genérico quando nenhum fato forte foi detectado.
+    // Tenta uma explicação CONCRETA da consequência (a parte "precisa"); só cai
+    // no texto genérico quando nenhum fato forte foi detectado — e aí usa a
+    // queda de chance de vitória, que ainda é informação real da posição.
     let why = null;
     const punish = move.refutation_pv_san && move.refutation_pv_san[0];
     if (oppHasMate) {
@@ -365,34 +462,37 @@
     } else if (cls === "miss" && bestWasMate) {
       why = `havia mate forçado em ${mateBestDist} com ${best}`;
     } else if (cls === "miss" && bestMat.delta >= 2 && bestMat.won) {
-      why = `${best} ganhava ${PIECE_PT_DEF[bestMat.won.type]}`;
+      why = `${best} ganhava ${PIECE_PT_DEF[bestMat.won.type]} e você deixou a chance passar`;
     } else if (refMat.delta <= -2 && refMat.lost) {
       why = `perde ${PIECE_PT_DEF[refMat.lost.type]}` + (punish ? ` após ${punish}` : "");
     } else if (cls === "blunder" && bestMat.delta >= 2 && bestMat.won) {
       why = `${best} ganhava ${PIECE_PT_DEF[bestMat.won.type]} e você deixou passar`;
     }
 
+    const winDrop = Math.round(cpToWinPercent(move.best_eval_cp) - cpToWinPercent(move.eval_after_cp));
+    const dropTxt = winDrop >= 4 ? ` (perde ~${winDrop}% de chance de vitória)` : "";
+    // Avaliação resultante anexada aos lances graves (exceto quando já é mate,
+    // que é terminal e dispensa).
+    const evTail = (!oppHasMate && (cls === "blunder" || cls === "mistake"))
+      ? `; ${ev}` : "";
+
     switch (cls) {
       case "inaccuracy":
         return why
           ? `${san} é impreciso: ${why}.`
-          : hasBest ? `${san} é uma imprecisão; ${best} era mais preciso.`
-                    : `${san} é uma imprecisão.`;
+          : `${san} é uma imprecisão${dropTxt}${hasBest ? `; ${best} mantinha as rédeas` : ""}.`;
       case "mistake":
         return why
-          ? `${san} é um erro — ${why}.`
-          : hasBest ? `${san} é um erro; ${best} era a melhor pedida.`
-                    : `${san} é um erro.`;
+          ? `${san} é um erro — ${why}${evTail}.`
+          : `${san} é um erro${dropTxt}${hasBest ? `; ${best} era a melhor pedida` : ""}.`;
       case "blunder":
         return why
-          ? `Capivarada! ${san} ${why}.`
-          : hasBest ? `Capivarada! ${san} entrega a posição — ${best} era necessário.`
-                    : `${san} é uma capivarada.`;
+          ? `Capivarada! ${san} ${why}${evTail}.`
+          : `Capivarada! ${san} entrega a posição${dropTxt}${hasBest ? ` — ${best} era necessário` : ""}.`;
       case "miss":
         return why
           ? `${san} deixa passar a chance: ${why}.`
-          : hasBest ? `${san} desperdiça a oportunidade — era ${best}.`
-                    : `${san} deixa passar uma oportunidade.`;
+          : `${san} desperdiça a oportunidade${hasBest ? ` — era ${best}` : ""}.`;
       default:
         return `${san}.`;
     }
@@ -487,6 +587,13 @@
           // como o oponente pune. Usada pra comentários precisos ("perde a dama
           // após Qxd8"). Vazia em xeque-mate (não há resposta).
           const refPvUci = mv.is_checkmate ? [] : (posResult[i + 1].bestPvUci || []);
+          // Material LÍQUIDO do lance (em peões, POV de quem moveu): o que ele
+          // captura de cara + o saldo da melhor resposta do oponente. ~0 numa
+          // troca, bem negativo num sacrifício de verdade. É o sinal honesto
+          // que separa "sacrifício brilhante" de "troquei peças".
+          const pov = mv.color === "white" ? "w" : "b";
+          const moveCaptureVal = mv.is_capture ? (PIECE_PAWNS[mv.captured_piece] || 0) : 0;
+          const netMaterial = moveCaptureVal + lineMaterial(mv.fen_after, refPvUci, pov).delta;
 
           const enriched = {
             ...mv,
@@ -500,6 +607,7 @@
             best_pv_uci: pr.bestPvUci,
             refutation_pv_uci: refPvUci,
             refutation_pv_san: pvUciToSan(mv.fen_after, refPvUci),
+            net_material: netMaterial,
             is_sacrifice: detectSacrifice(mv.fen_before, mv.uci),
           };
           enriched.classification = classifyMove(enriched, collected[collected.length - 1]);

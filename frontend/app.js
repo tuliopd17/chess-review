@@ -872,7 +872,17 @@ function renderCoach() {
       </div>
     `).join("");
     document.querySelectorAll("#coach-critical .critical-item").forEach(el => {
-      el.onclick = () => goToPly(parseInt(el.dataset.ply, 10));
+      el.onclick = () => {
+        goToPly(parseInt(el.dataset.ply, 10));
+        // Sobe pro tabuleiro pra ver o lance na hora (essencial no mobile, onde
+        // os pontos críticos ficam bem abaixo do tabuleiro; inofensivo no PC).
+        // Adiado em 2 frames: o goToPly mexe no scroll da lista de lances e isso
+        // cancelava o scroll suave se disparado no mesmo tick (some no desktop).
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          document.querySelector(".board-section")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }));
+      };
     });
   }
 }

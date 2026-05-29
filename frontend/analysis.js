@@ -386,10 +386,37 @@
       else if (!/^[NBRQK]/.test(t) && ["e4", "d4", "e5", "d5"].includes(t.slice(-2))) {
         parts.push("finca um peão no centro");
       }
+    } else if (/^K/.test(t) && !move.is_capture && !move.is_check) {
+      // No final, o rei vira peça ativa — bom de mencionar nos vários lances de
+      // rei que senão ficariam todos com o mesmo texto.
+      parts.push("ativa o rei");
     }
     if (attacksEnemyQueen(move)) parts.push("ataca a dama");
     if (move.is_check && !parts.some((p) => p.includes("xeque"))) parts.push("dá xeque");
     return parts.length ? parts.slice(0, 2).join(" e ") : null;
+  }
+
+  // Substantivo do material por valor aproximado (em peões) — usado quando a
+  // perda/ganho vem de uma sequência e nomear UMA peça seria enganoso.
+  function materialNoun(pawns) {
+    const d = Math.round(Math.abs(pawns));
+    if (d >= 8) return "a dama";
+    if (d >= 5) return "uma torre";
+    if (d === 4) return "material pesado";
+    if (d === 3) return "uma peça";
+    if (d === 2) return "a qualidade";
+    if (d === 1) return "um peão";
+    return "material";
+  }
+
+  // Nome (com artigo) da peça que está numa casa, numa dada FEN.
+  function pieceAt(fen, sq) {
+    try {
+      const p = new Chess(fen).get(sq);
+      return p ? PIECE_PT_DEF[p.type] : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   function generateComment(move, opening) {
@@ -443,12 +470,28 @@
     if (cls === "best" || cls === "excellent") {
       if (playerHasMate) return `${san} encaminha o mate forçado em ${mateDist}; siga a linha indicada e não há defesa.`;
       const lead = cls === "best"
-        ? `${san} é a melhor jogada da posição`
-        : `${san} é excelente, quase no nível da melhor opção`;
+        ? pick([
+            `${san} é a melhor jogada da posição`,
+            `${san} era o lance certo aqui`,
+            `${san} é exatamente o que o engine recomenda`,
+            `Nada superava ${san}`,
+          ])
+        : pick([
+            `${san} é excelente, quase tão bom quanto o melhor lance`,
+            `${san} é uma escolha excelente`,
+            `${san} é praticamente o melhor que havia`,
+            `${san} é muito bom`,
+          ]);
       return action ? `${lead}: ${action}, e ${ev}.` : `${lead} — ${ev}.`;
     }
     if (cls === "good") {
-      return action ? `${san} é um bom lance: ${action}, e ${ev}.` : `${san} é um bom lance — ${ev}.`;
+      const lead = pick([
+        `${san} é um bom lance`,
+        `${san} é uma jogada sólida`,
+        `${san} mantém o controle`,
+        `${san} é razoável`,
+      ]);
+      return action ? `${lead}: ${action}, e ${ev}.` : `${lead} — ${ev}.`;
     }
 
     // ---------- Lances NEGATIVOS ----------
@@ -457,16 +500,29 @@
     // queda de chance de vitória, que ainda é informação real da posição.
     let why = null;
     const punish = move.refutation_pv_san && move.refutation_pv_san[0];
+    const netLoss = move.net_material != null ? move.net_material : refMat.delta;
+    // O oponente captura JÁ a peça que você acabou de mover (na casa de destino)?
+    // Aí dá pra nomear exatamente a peça perdida ("perde o cavalo após gxf6").
+    // Senão, a perda vem de uma sequência e cravar UMA peça engana (pode ser
+    // uma troca lá na frente da linha) — usamos a magnitude do saldo líquido.
+    const refTo = move.refutation_pv_uci && move.refutation_pv_uci[0]
+                  && move.refutation_pv_uci[0].slice(2, 4);
+    const tookMovedPiece = refTo && refTo === move.to && punish && punish.includes("x");
+
     if (oppHasMate) {
       why = `permite mate forçado em ${mateDist}` + (punish ? `, começando por ${punish}` : "");
     } else if (cls === "miss" && bestWasMate) {
       why = `havia mate forçado em ${mateBestDist} com ${best}`;
-    } else if (cls === "miss" && bestMat.delta >= 2 && bestMat.won) {
-      why = `${best} ganhava ${PIECE_PT_DEF[bestMat.won.type]} e você deixou a chance passar`;
-    } else if (refMat.delta <= -2 && refMat.lost) {
-      why = `perde ${PIECE_PT_DEF[refMat.lost.type]}` + (punish ? ` após ${punish}` : "");
-    } else if (cls === "blunder" && bestMat.delta >= 2 && bestMat.won) {
-      why = `${best} ganhava ${PIECE_PT_DEF[bestMat.won.type]} e você deixou passar`;
+    } else if (cls === "miss" && bestMat.delta >= 2) {
+      why = `${best} ganhava ${materialNoun(bestMat.delta)} e você deixou a chance passar`;
+    } else if (tookMovedPiece && netLoss <= -1) {
+      why = `perde ${pieceAt(move.fen_after, move.to) || "a peça"}` + (punish ? ` após ${punish}` : "");
+    } else if (netLoss <= -2 && move.eval_after_cp <= 30) {
+      // Perda via sequência: só afirma quando você NÃO segue à frente (senão é
+      // só devolver parte da vantagem, e dizer "perde a torre" soa contraditório).
+      why = `perde ${materialNoun(netLoss)}` + (punish ? ` após ${punish}` : "");
+    } else if (cls === "blunder" && bestMat.delta >= 2) {
+      why = `${best} ganhava ${materialNoun(bestMat.delta)} e você deixou passar`;
     }
 
     const winDrop = Math.round(cpToWinPercent(move.best_eval_cp) - cpToWinPercent(move.eval_after_cp));

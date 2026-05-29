@@ -611,14 +611,14 @@ async function analyzePgnStreaming(pgn) {
     if (runId !== state.analysisRunId) return;
     pool.cancelAll(); // limpa qualquer batch anterior antes de começar
 
-    // A profundidade da análise é ADAPTATIVA por posição (definida dentro de
-    // analyzeGame): finais vão fundo — onde o ganho só aparece a ~depth 22+ e é
-    // barato calcular —, meio-jogo cheio fica mais raso pra não arrastar. O
-    // seletor de profundidade é só pro engine AO VIVO do painel lateral.
+    // A análise da partida usa depth menor (e roda em paralelo); o painel ao
+    // vivo é que usa a profundidade cheia escolhida no seletor.
+    const depthSel = parseInt(document.getElementById("engine-depth-sel").value, 10);
+    const depth = depthSel > 0 ? Math.min(depthSel, 14) : 14;
     const result = await ChessReviewAnalysis.analyzeGame(
       parsed,
       pool,
-      {},
+      { depth },
       (moveData, idx, total) => {
         if (runId !== state.analysisRunId) return; // descarta callbacks de análise antiga
         state.partialMoves.push(moveData);
@@ -834,15 +834,24 @@ function renderSummary() {
   `;
   const cw = a.counts_white || {};
   const cb = a.counts_black || {};
+  // Cabeçalho: nome das brancas (coluna da esquerda) e das pretas (direita),
+  // alinhado com as colunas de contagem logo abaixo.
+  const head = `
+    <div class="count-row count-head">
+      <span class="count-n w" title="${escapeHtml(whiteName)}">${escapeHtml(whiteName)}</span>
+      <span class="count-label"></span>
+      <span class="count-n b" title="${escapeHtml(blackName)}">${escapeHtml(blackName)}</span>
+    </div>`;
   const rows = CLASS_ORDER
     .filter(c => (cw[c] || 0) + (cb[c] || 0) > 0)
     .map(c => `
       <div class="count-row">
+        <span class="count-n w">${cw[c] || 0}</span>
         <span class="count-label">${CLASS_ICONS[c](14)} ${CLASS_LABELS[c]}</span>
-        <span><b>${cw[c] || 0}</b> · <b>${cb[c] || 0}</b></span>
+        <span class="count-n b">${cb[c] || 0}</span>
       </div>
     `).join("");
-  document.getElementById("counts-summary").innerHTML = rows;
+  document.getElementById("counts-summary").innerHTML = head + rows;
 }
 
 function renderCoach() {

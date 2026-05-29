@@ -21,40 +21,6 @@
 (function () {
   const MATE_SCORE_CP = 10000;
 
-  // ===== Orçamento de busca: NÓS por posição (estilo Lichess) =====
-  //
-  // Profundidade FIXA é um péssimo botão: num final ganho o engine só "enxerga"
-  // o ganho lá pela profundidade ~22+ (a depth 14/18 um final ganho aparece como
-  // mísero +2), mas rodar a partida inteira a depth alta é lento demais. A saída
-  // é limitar por NÓS, não por profundidade: com a mesma conta de nós, um final
-  // (pouca ramificação) chega naturalmente fundo — e fiel —, enquanto o meio-
-  // jogo cheio para numa profundidade mais modesta. Bônus: é DETERMINÍSTICO
-  // (mesma posição → mesmo resultado, independe da carga da CPU).
-  //
-  // E o orçamento é ADAPTATIVO por nº de peças: final tem nó barato (avaliação
-  // simples → alto nps) e precisa de profundidade, então leva MAIS nós; abertura
-  // / meio-jogo cheio tem nó caro e não precisa ir tão fundo pra avaliação ser
-  // fiel, então leva MENOS. Resultado: finais fiéis E tempo total mais curto.
-  function countPieces(fen) {
-    let n = 0;
-    const board = (fen || "").split(" ")[0];
-    for (let i = 0; i < board.length; i++) {
-      const c = board[i];
-      if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z")) n++;
-    }
-    return n;
-  }
-
-  function nodeBudget(fen, floor) {
-    const n = countPieces(fen);
-    let b;
-    if (n <= 8) b = 2500000;       // final cru: barato por nó, vai fundo e fiel
-    else if (n <= 14) b = 1300000; // final / transição
-    else if (n <= 22) b = 800000;  // meio-jogo
-    else b = 600000;               // abertura / meio-jogo cheio: rápido
-    return Math.max(b, floor || 0);
-  }
-
   // ===== Conversões eval =====
 
   function cpToWinrate(cp) {
@@ -609,9 +575,7 @@
    * @returns {Promise<object>} payload completo com stats
    */
   async function analyzeGame(parsed, pool, opts, onMove) {
-    // Orçamento de busca por NÓS, adaptativo por posição (ver nodeBudget).
-    // opts.nodes vira um PISO opcional.
-    const nodeFloor = opts.nodes || 0;
+    const depth = opts.depth || 14;
     const multipv = 2; // precisamos do 2º melhor pra detectar Great
     const moves = parsed.moves;
     const opening = parsed.opening;
@@ -628,7 +592,7 @@
 
       // Só as posições "antes" precisam de MultiPV 2 (pra detectar Great); a
       // posição final só precisa do eval.
-      const optsFor = (i) => ({ nodes: nodeBudget(positions[i], nodeFloor), multipv: i < N ? multipv : 1 });
+      const optsFor = (i) => ({ depth, multipv: i < N ? multipv : 1 });
 
       function parsePosInfo(info) {
         const best = info && info[1];

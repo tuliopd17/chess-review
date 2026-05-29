@@ -607,14 +607,32 @@ button.danger:hover { background: var(--danger); color: white; }
 .player-acc .acc-label { font-size: 0.7rem; color: var(--text-muted); }
 .player-acc .elo { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
 
+/* 3 colunas: nº das brancas (esq.) | rótulo (centro) | nº das pretas (dir.).
+   Assim cada cor vira uma coluna alinhada e dá pra ler a quantidade de cada
+   lado só batendo o olho. */
 .count-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
+  gap: 8px;
   padding: 4px 0;
   font-size: 0.85rem;
 }
-.count-row .count-label { display: flex; align-items: center; gap: 6px; }
+.count-row .count-label { display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.count-row .count-n { font-variant-numeric: tabular-nums; font-weight: 700; }
+.count-row .count-n.w { text-align: left; }
+.count-row .count-n.b { text-align: right; }
+.count-row.count-head {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+.count-row.count-head .count-n { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* ===== Opening + Coach cards ===== */
 

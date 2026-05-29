@@ -232,36 +232,170 @@
     return (move.best_eval_cp - move.second_best_eval_cp) > 200;
   }
 
-  // ===== Comentários templates =====
+  // ===== Comentários por lance =====
+  //
+  // Filosofia (pesquisada a partir do Game Review do chess.com e da análise do
+  // Lichess): um bom comentário NÃO rotula o lance, ele EXPLICA a consequência
+  // concreta — "perde o cavalo", "deixa passar o mate em 2", "ganhava a dama".
+  // O chess.com chama isso de traduzir a linha do engine em linguagem humana
+  // (as opções "Show Lost Piece", "Show Checkmate", "Show Fork" do coach). Como
+  // rodamos 100% no browser (sem LLM), fazemos detecção de motivos por REGRAS,
+  // usando o que já temos em mãos:
+  //   - classificação + evals  -> tem mate? quanto de win% se perdeu?
+  //   - melhor lance / melhor PV -> o que se deveria ter feito;
+  //   - a REFUTAÇÃO -> a melhor resposta do oponente DEPOIS do lance jogado.
+  //     Sai de graça: a posição "depois" do lance N é a posição "antes" do N+1,
+  //     que já analisamos, então sua melhor PV é exatamente como o oponente pune.
+  // Tudo é função pura (lance -> texto), portanto determinístico — bom pro cache.
+
+  const PIECE_PAWNS = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+  const PIECE_PT = { p: "peão", n: "cavalo", b: "bispo", r: "torre", q: "dama" };
+  const PIECE_PT_DEF = { p: "o peão", n: "o cavalo", b: "o bispo", r: "a torre", q: "a dama" };
+
+  // Distância até o mate a partir do cp codificado (scoreToCp usa MATE - |n|).
+  // Devolve o nº de lances (estilo python-chess Mate(n)) ou null se não é mate.
+  function mateInFromCp(cp) {
+    const a = Math.abs(cp);
+    if (a < MATE_SCORE_CP - 1000) return null;
+    return MATE_SCORE_CP - a;
+  }
+
+  // Simula uma PV e mede o saldo material (em peões) do ponto de vista de `pov`
+  // ('w'|'b'), mais a peça mais valiosa que cada lado capturou. Serve pros dois
+  // lados da moeda: "esse lance perde X" (PV = refutação do oponente) e "o certo
+  // ganhava X" (PV = melhor linha do jogador). Só capturas líquidas importam.
+  function lineMaterial(fenStart, pvUci, pov) {
+    try {
+      const c = new Chess(fenStart);
+      const povCaps = [], oppCaps = [];
+      for (const u of (pvUci || []).slice(0, 10)) {
+        const mover = c.turn();
+        const res = c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4) || "q" });
+        if (!res) break;
+        if (res.captured) {
+          (mover === pov ? povCaps : oppCaps).push({ type: res.captured, square: res.to });
+        }
+      }
+      const sum = (arr) => arr.reduce((a, r) => a + (PIECE_PAWNS[r.type] || 0), 0);
+      const biggest = (arr) =>
+        arr.slice().sort((a, b) => PIECE_PAWNS[b.type] - PIECE_PAWNS[a.type])[0] || null;
+      return { delta: sum(povCaps) - sum(oppCaps), won: biggest(povCaps), lost: biggest(oppCaps) };
+    } catch (e) {
+      return { delta: 0, won: null, lost: null };
+    }
+  }
+
+  // Nome (com artigo) da peça que efetivamente se moveu — usado pra nomear o
+  // sacrifício num lance brilhante.
+  function movedPieceName(move) {
+    try {
+      const p = new Chess(move.fen_before).get(move.uci.slice(0, 2));
+      return p ? PIECE_PT_DEF[p.type] : null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   function generateComment(move, opening) {
     const cls = move.classification;
     const san = move.san;
     const best = move.best_move_san;
-    if (cls === "book" && opening && opening.name) {
-      return `${san} ainda é parte da ${opening.name}.`;
-    }
-    const base = {
-      brilliant:  `Lance brilhante! ${san} é um sacrifício excepcional.`,
-      great:      `Ótimo lance! ${san} era a única forma de manter a vantagem.`,
-      best:       `Melhor lance. ${san} é exatamente o que o engine recomendava.`,
-      excellent:  `Excelente. ${san} é praticamente tão bom quanto o melhor lance.`,
-      good:       `Bom lance. ${san} mantém uma posição razoável.`,
-      book:       `${san} é um lance de abertura conhecido.`,
-      inaccuracy: `Imprecisão. ${san} entrega um pouco da vantagem — ${best} era mais preciso.`,
-      mistake:    `Erro. ${san} piora sua posição — o engine preferia ${best}.`,
-      blunder:    `Capivarada! ${san} é uma jogada ruim — o correto era ${best}.`,
-      miss:       `Oportunidade perdida. Você poderia ter punido com ${best}.`,
-    }[cls] || `${san}.`;
+    const hasBest = best && best !== san;
+    const pick = (arr) => arr[(move.ply || 0) % arr.length];
+    const pov = move.color === "white" ? "w" : "b";
 
-    const extras = [];
-    if (move.is_checkmate) extras.push("Xeque-mate!");
-    else if (move.is_check) extras.push("Dá xeque.");
-    if (move.is_capture) {
-      const names = { p: "peão", n: "cavalo", b: "bispo", r: "torre", q: "dama" };
-      if (names[move.captured_piece]) extras.push(`Captura ${names[move.captured_piece]}.`);
+    // --- Clímax: xeque-mate dado. ---
+    if (move.is_checkmate) {
+      return pick([`${san} é xeque-mate. Fim de jogo!`, `${san} crava o mate — acabou!`]);
     }
-    return extras.length ? base + " " + extras.join(" ") : base;
+
+    // --- Abertura conhecida. ---
+    if (cls === "book") {
+      return opening && opening.name
+        ? `${san} faz parte da ${opening.name}, uma linha de livro.`
+        : pick([`${san} é um lance de abertura conhecido.`, `${san} segue a teoria.`]);
+    }
+
+    // Fatos concretos: mate (a favor/contra), material entregue (refutação) e
+    // material que se deixou de ganhar (melhor linha).
+    const mateDist = mateInFromCp(move.eval_after_cp);
+    const mateBestDist = mateInFromCp(move.best_eval_cp);
+    const playerHasMate = mateDist != null && move.eval_after_cp > 0;
+    const oppHasMate = mateDist != null && move.eval_after_cp < 0;
+    const bestWasMate = mateBestDist != null && move.best_eval_cp > 0;
+
+    const refMat = lineMaterial(move.fen_after, move.refutation_pv_uci, pov);   // o que entrega
+    const bestMat = lineMaterial(move.fen_before, move.best_pv_uci, pov);       // o que ganhava
+
+    // ---------- Lances POSITIVOS ----------
+    if (cls === "brilliant") {
+      const sac = movedPieceName(move);
+      const base = sac
+        ? `${san} é brilhante — sacrifica ${sac} por algo bem maior.`
+        : `${san} é brilhante! Um recurso difícil de enxergar.`;
+      return playerHasMate ? `${base} Leva a mate forçado em ${mateDist}.` : base;
+    }
+    if (cls === "great") {
+      return pick([
+        `${san} é a jogada que segura tudo — era praticamente a única boa.`,
+        `${san} é excepcional: qualquer outra coisa estragava a posição.`,
+      ]);
+    }
+    if (cls === "best" || cls === "excellent") {
+      if (playerHasMate) return `${san} encaminha o mate forçado em ${mateDist}.`;
+      if (move.is_capture && PIECE_PT_DEF[move.captured_piece]) {
+        return `${san} captura ${PIECE_PT_DEF[move.captured_piece]} e é o melhor da posição.`;
+      }
+      if (move.is_check) return `${san} dá xeque e é o lance mais preciso aqui.`;
+      return cls === "best"
+        ? pick([`${san} é a melhor jogada da posição.`, `${san} era o lance certo aqui.`])
+        : pick([`${san} é excelente, quase no nível da melhor opção.`, `${san} é uma ótima escolha.`]);
+    }
+    if (cls === "good") {
+      return pick([`${san} é um bom lance, mantém a posição saudável.`, `${san} é uma jogada sólida.`]);
+    }
+
+    // ---------- Lances NEGATIVOS ----------
+    // Tenta uma explicação CONCRETA da consequência (a parte "preciso"); só cai
+    // no texto genérico quando nenhum fato forte foi detectado.
+    let why = null;
+    const punish = move.refutation_pv_san && move.refutation_pv_san[0];
+    if (oppHasMate) {
+      why = `permite mate forçado em ${mateDist}` + (punish ? `, começando por ${punish}` : "");
+    } else if (cls === "miss" && bestWasMate) {
+      why = `havia mate forçado em ${mateBestDist} com ${best}`;
+    } else if (cls === "miss" && bestMat.delta >= 2 && bestMat.won) {
+      why = `${best} ganhava ${PIECE_PT_DEF[bestMat.won.type]}`;
+    } else if (refMat.delta <= -2 && refMat.lost) {
+      why = `perde ${PIECE_PT_DEF[refMat.lost.type]}` + (punish ? ` após ${punish}` : "");
+    } else if (cls === "blunder" && bestMat.delta >= 2 && bestMat.won) {
+      why = `${best} ganhava ${PIECE_PT_DEF[bestMat.won.type]} e você deixou passar`;
+    }
+
+    switch (cls) {
+      case "inaccuracy":
+        return why
+          ? `${san} é impreciso: ${why}.`
+          : hasBest ? `${san} é uma imprecisão; ${best} era mais preciso.`
+                    : `${san} é uma imprecisão.`;
+      case "mistake":
+        return why
+          ? `${san} é um erro — ${why}.`
+          : hasBest ? `${san} é um erro; ${best} era a melhor pedida.`
+                    : `${san} é um erro.`;
+      case "blunder":
+        return why
+          ? `Capivarada! ${san} ${why}.`
+          : hasBest ? `Capivarada! ${san} entrega a posição — ${best} era necessário.`
+                    : `${san} é uma capivarada.`;
+      case "miss":
+        return why
+          ? `${san} deixa passar a chance: ${why}.`
+          : hasBest ? `${san} desperdiça a oportunidade — era ${best}.`
+                    : `${san} deixa passar uma oportunidade.`;
+      default:
+        return `${san}.`;
+    }
   }
 
   // ===== UCI -> SAN da PV (usa chess.js) =====
@@ -349,6 +483,10 @@
           const evalAfterCp = mv.is_checkmate
             ? MATE_SCORE_CP - 1
             : -posResult[i + 1].bestEvalCp;
+          // Refutação: a melhor PV da posição "depois" do lance é exatamente
+          // como o oponente pune. Usada pra comentários precisos ("perde a dama
+          // após Qxd8"). Vazia em xeque-mate (não há resposta).
+          const refPvUci = mv.is_checkmate ? [] : (posResult[i + 1].bestPvUci || []);
 
           const enriched = {
             ...mv,
@@ -360,6 +498,8 @@
             best_move_uci: pr.bestUci,
             best_pv_san: bestPvSan,
             best_pv_uci: pr.bestPvUci,
+            refutation_pv_uci: refPvUci,
+            refutation_pv_san: pvUciToSan(mv.fen_after, refPvUci),
             is_sacrifice: detectSacrifice(mv.fen_before, mv.uci),
           };
           enriched.classification = classifyMove(enriched, collected[collected.length - 1]);

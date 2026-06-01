@@ -14,6 +14,7 @@ const CLS_COLORS = {
   excellent:  "#95bb5a",
   good:       "#b0c98c",
   book:       "#a88865",
+  forced:     "#9b9b95",
   inaccuracy: "#f4bf3f",
   mistake:    "#ef9234",
   blunder:    "#ca3431",
@@ -60,6 +61,11 @@ const CLASS_ICONS = {
     // Livro aberto (duas páginas) branco com vinco central.
     `<path d="M12 8.1C10.5 7.2 8.8 6.9 7 6.9v9c1.8 0 3.5.3 5 1.2 1.5-.9 3.2-1.2 5-1.2v-9c-1.8 0-3.5.3-5 1.2z" fill="#ffffff"/>` +
     `<line x1="12" y1="8.1" x2="12" y2="17.1" stroke="${CLS_COLORS.book}" stroke-width="1.1"/>`, size),
+  forced: (size = 20) => svg(
+    disc(CLS_COLORS.forced) +
+    // Engrenagem/corrente estilizada → "obrigatório": seta dupla pra direita.
+    `<path d="M7 8.5l3.2 3.5L7 15.5M12 8.5l3.2 3.5L12 15.5" fill="none" stroke="#ffffff" ` +
+    `stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>`, size),
   inaccuracy: (size = 20) => svg(disc(CLS_COLORS.inaccuracy) + glyphText("?!", 13, -1.5), size),
   mistake:    (size = 20) => svg(disc(CLS_COLORS.mistake)    + glyphText("?", 17), size),
   blunder:    (size = 20) => svg(disc(CLS_COLORS.blunder)    + glyphText("??", 14, -1.5), size),

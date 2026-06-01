@@ -17,7 +17,7 @@ A análise roda **100% no navegador via Stockfish WASM** — você não precisa 
 - **100% Stockfish WASM no navegador** — não precisa instalar nada de engine. Os ~10MB do Stockfish 18 lite são baixados na primeira execução e ficam em cache.
 - **Modo exploração**: arraste qualquer peça no tabuleiro pra criar uma variante. A engine analisa ao vivo. Botão "voltar pra partida" pra retomar.
 - **Análise incremental**: lances aparecem classificados conforme o WASM termina cada posição.
-- **10 classificações** estilo chess.com com ícones próprios: Brilliant, Great, Best, Excellent, Good, Book, Inaccuracy, Mistake, Blunder, Miss.
+- **11 classificações** estilo chess.com com ícones próprios: Brilliant, Great, Best, Excellent, Good, Book, Forced, Inaccuracy, Mistake, Blunder, Miss.
 - **Detecção de aberturas via base do Lichess** (download automático na primeira execução).
 - **Acurácia 0–100** por jogador (mesma fórmula do chess.com).
 - **Estimativa de ELO** baseada na acurácia.
@@ -120,26 +120,38 @@ A análise em si **não** é feita no backend — só no navegador.
 
 ## Como funciona a classificação
 
-Cada lance é classificado comparando a *probabilidade de vitória* da posição antes e depois do lance jogado, contra a melhor jogada do engine. A conversão de centipawns para winrate usa a sigmoide do Lichess:
+A lógica replica o **Expected Points Model** do chess.com (e a implementação de referência open-source [WintrCat/freechess](https://github.com/WintrCat/freechess)). Cada lance é classificado pela **queda de probabilidade de vitória** entre a melhor jogada da posição e a jogada efetivamente feita, ambas do ponto de vista de quem moveu. A conversão de centipawns para winrate usa a sigmoide do Lichess:
 
 ```
 winrate = 1 / (1 + exp(-0.00368208 × cp))
 ```
 
-| Categoria   | Queda de winrate | Notas |
+Os limiares (em pontos de win-prob, 0–1) são exatamente os publicados pelo chess.com:
+
+| Categoria   | Queda de win-prob | Notas |
 |-------------|-------------------|-------|
-| Brilliant   | até 2%            | + sacrifício real detectado por análise de troca, posição equilibrada |
-| Great       | 0%                | Único lance que mantém a vantagem (gap > 2 peões para a 2ª melhor opção) |
-| Best        | 0%                | Exatamente o lance do engine |
+| Best        | 0%                | Exatamente o lance nº 1 do engine |
 | Excellent   | até 2%            | Praticamente igual ao melhor |
 | Good        | até 5%            | Pequena imprecisão tolerável |
-| Book        | —                 | Lance ainda dentro da base de aberturas do Lichess |
 | Inaccuracy  | até 10%           | Imprecisão visível |
 | Mistake     | até 20%           | Erro |
 | Blunder     | acima de 20%      | Capivarada |
-| Miss        | —                 | Oponente errou e o jogador não puniu |
 
-Acurácia: `103.1668 × exp(-0.04354 × loss%) - 3.1669` (mesma fórmula do chess.com).
+Por cima dos limiares vêm as classificações **especiais**, que não dependem só da win-prob:
+
+| Categoria   | Critério |
+|-------------|----------|
+| Brilliant   | É o melhor lance **e** deixa de propósito uma peça de valor *pendurada* que o oponente pode realmente capturar (sacrifício real, detectado por análise de atacantes/defensores). Não vale se você já ganhava à toa, se ficou pior depois, se estava em xeque ou se é promoção. |
+| Great       | Momento crítico em que havia **uma só** jogada à altura (folga grande pro 2º melhor lance), seja punindo um deslize do oponente, seja achando a única continuação que segura/ganha. |
+| Book        | Lance ainda dentro da base de aberturas do Lichess. |
+| Forced      | Era o **único lance legal** na posição. |
+| Miss        | Você tinha um ganho claro (ou mate forçado) e o lance deixou a vitória escapar para igualdade/pior. |
+
+**Transições de mate** são tratadas à parte: largar um mate forçado é punido de acordo com o que sobra no placar (não é "excelente" só porque ainda mostra ~100%), e permitir mate é mais grave quanto mais próximo ele estiver. Há ainda guardas de leniência do chess.com: não é capivarada se você seguia completamente ganho após o lance, nem se já estava completamente perdido antes.
+
+Os **comentários** de cada lance não apenas rotulam — explicam a consequência concreta (perde tal peça, permite mate em N, deixou passar o ganho de material, é o único lance que segura), traduzindo a linha do engine em linguagem humana.
+
+Acurácia: `103.1668 × exp(-0.04354 × loss%) - 3.1669` por lance (fórmula do Lichess), combinada por média harmônica + média ponderada por volatilidade (aproxima de perto o chess.com).
 
 ## Roadmap
 

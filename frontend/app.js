@@ -46,6 +46,7 @@ const CLASS_LABELS = {
   excellent:  "Excelente",
   good:       "Bom",
   book:       "Abertura",
+  forced:     "Forçado",
   inaccuracy: "Imprecisão",
   mistake:    "Erro",
   blunder:    "Capivarada",
@@ -54,7 +55,7 @@ const CLASS_LABELS = {
 
 const CLASS_ORDER = [
   "brilliant", "great", "best", "excellent", "good",
-  "book", "inaccuracy", "mistake", "blunder", "miss"
+  "book", "forced", "inaccuracy", "mistake", "blunder", "miss"
 ];
 
 const HISTORY_KEY = "chess_review_history_v1";

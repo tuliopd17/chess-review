@@ -816,4 +816,10 @@ footer a { color: var(--accent); }
 
   /* Controles ocupam a largura toda, botões grandes pro dedo. */
   .controls button { max-width: none; min-height: 46px; }
+
+  /* iOS Safari (e Chrome Android) dão zoom automatico ao focar um campo com
+     font-size < 16px. Forçar 16px nos campos no celular elimina esse zoom
+     indesejado sem mexer no viewport (zoom manual/pinch continua funcionando)
+     e sem alterar a aparencia no desktop. */
+  textarea, input[type="text"], select { font-size: 16px; }
 }

@@ -1,7 +1,7 @@
 /* Stockfish (versão browser) rodando via Web Worker.
  *
- * O backend decide qual versão servir (SF16 NNUE single-threaded de preferência,
- * fallback pra SF18 asm.js) e expõe via /api/health.stockfish_wasm_url.
+ * O backend decide qual versão servir (SF18 lite-single de preferência, com
+ * fallback pra SF16 NNUE e asm.js) e expõe via /api/health.stockfish_wasm_url.
  *
  * API pública:
  *   const eng = new BrowserEngine();
@@ -39,7 +39,7 @@
     } catch (e) {
       warn("falha ao consultar /api/health:", e.message);
     }
-    return "/sf/stockfish-nnue-16-single.js";
+    return "/sf/stockfish-18-lite-single.js";
   }
 
   class BrowserEngine {

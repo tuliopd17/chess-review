@@ -47,7 +47,7 @@
         worker = null;
       }
       // Resolve URL dinamicamente via /api/health
-      let url = "/sf/stockfish-nnue-16-single.js";
+      let url = "/sf/stockfish-18-lite-single.js";
       try {
         const h = await fetch("/api/health").then(r => r.json());
         log("health: " + JSON.stringify(h), "info");

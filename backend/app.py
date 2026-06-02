@@ -44,12 +44,12 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 
-app = FastAPI(title="Chess Review", version="0.4.0")
+app = FastAPI(title="Chess Review", version="0.5.0")
 
 
 @app.on_event("startup")
 async def _startup_warmup():
-    # Remove arquivos da versão SF18 lite-single (que quebrava em vários browsers).
+    # Remove caches de versões antigas (multi-thread SF11 etc).
     try:
         sf_assets.cleanup_old_files()
     except Exception as e:

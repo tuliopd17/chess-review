@@ -2,14 +2,19 @@
 Auto-download e cache dos binários do Stockfish (versão browser).
 
 Histórico:
-  - v0.3: tentamos `stockfish-18-lite-single` (nmrugg). Quebra com
-    "RuntimeError: unreachable" em alguns browsers/CPUs (provavelmente por
-    instruções WASM avançadas — bulk-memory, non-trapping float-to-int — que
-    o runtime aborta).
-  - v0.4: trocamos pra **Stockfish 16 NNUE single-threaded** (branch
-    `Stockfish16` do nmrugg, mais antigo e mais compatível) + fallback
-    `stockfish-18-asm.js` (asm.js puro, roda em literalmente qualquer
-    browser que rode JS, mais lento mas confiável).
+  - v0.3: tentamos `stockfish-18-lite-single` (nmrugg). Quebrava com
+    "RuntimeError: unreachable". Na época culpamos instruções WASM avançadas,
+    mas os issues oficiais (nmrugg/stockfish.js #101 e #33) mostram que é uma
+    CONDIÇÃO DE CORRIDA dos builds single-threaded: dispara quando se manda
+    comandos `go` sobrepostos sem esperar o `bestmove` anterior.
+  - v0.4: por causa daquele crash, recuamos pra **Stockfish 16 NNUE
+    single-threaded** (branch `Stockfish16` do nmrugg) + fallback asm.js.
+  - v0.5: o `engine_wasm.js` passou a serializar as análises (fila serial +
+    espera o `bestmove` antes do próximo `go`), que é exatamente o workaround
+    do crash acima. Com a corrida eliminada, voltamos pro **Stockfish 18
+    lite-single** como engine principal (NNUE mais nova/forte, ~7MB,
+    single-threaded, sem precisar de SharedArrayBuffer/COOP-COEP). SF16 NNUE e
+    asm.js seguem como fallbacks em cascata.
 
 Os arquivos são servidos pelo nosso backend em /sf/ pra evitar CORS.
 """
@@ -27,9 +32,26 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 # Esses arquivos foram testados em produção por anos via Chesskit/eval.bar.
 SF16_BRANCH = "Stockfish16"
 
+# Release oficial do SF18 (única release do nmrugg que traz os binários do SF18).
+# O `src/` do repo não tem os arquivos compilados — eles só vêm anexados à
+# release. Mirror secundário: pacote npm `stockfish` (arquivos em /bin/).
+SF18_RELEASE = "v18.0.0"
+SF18_NPM = "18.0.7"
+
 # URLs por arquivo, tentadas em ordem.
 ASSET_URLS = {
-    # === Stockfish 16 NNUE single-threaded (escolha principal) ===
+    # === Stockfish 18 lite-single (escolha principal) ===
+    # NNUE mais nova/forte que o SF16. Loader stub ~20 KB + .wasm ~7 MB.
+    "stockfish-18-lite-single.js": [
+        f"https://github.com/nmrugg/stockfish.js/releases/download/{SF18_RELEASE}/stockfish-18-lite-single.js",
+        f"https://unpkg.com/stockfish@{SF18_NPM}/bin/stockfish-18-lite-single.js",
+    ],
+    "stockfish-18-lite-single.wasm": [
+        f"https://github.com/nmrugg/stockfish.js/releases/download/{SF18_RELEASE}/stockfish-18-lite-single.wasm",
+        f"https://unpkg.com/stockfish@{SF18_NPM}/bin/stockfish-18-lite-single.wasm",
+    ],
+
+    # === Stockfish 16 NNUE single-threaded (fallback) ===
     "stockfish-nnue-16-single.js": [
         f"https://cdn.jsdelivr.net/gh/nmrugg/stockfish.js@{SF16_BRANCH}/src/stockfish-nnue-16-single.js",
         f"https://raw.githubusercontent.com/nmrugg/stockfish.js/{SF16_BRANCH}/src/stockfish-nnue-16-single.js",
@@ -52,15 +74,19 @@ ASSET_URLS = {
 # 50 KB rejeitava o loader legítimo, derrubando a app pro fallback asm.js
 # (~10x mais lento). O floor agora só serve pra barrar páginas de erro/404.
 MIN_SIZE_BYTES = {
+    "stockfish-18-lite-single.js": 15_000,     # loader stub (~20 KB)
+    "stockfish-18-lite-single.wasm": 5_000_000,  # engine de verdade (~7 MB)
     "stockfish-nnue-16-single.js": 15_000,
     "stockfish-nnue-16-single.wasm": 400_000,
     "stockfish-18-asm.js": 5_000_000,
 }
 
-# Arquivos OBRIGATÓRIOS pra app funcionar (precisa pelo menos UMA dessas combos:
-#   - SF16 NNUE WASM (.js + .wasm), OU
-#   - ASM-JS (.js sozinho)
+# Combos em ordem de preferência. Precisa de pelo menos UM completo:
+#   - SF18 lite-single WASM (.js + .wasm)  <- principal
+#   - SF16 NNUE WASM (.js + .wasm)         <- fallback
+#   - ASM-JS (.js sozinho)                 <- fallback final (roda em qualquer JS)
 REQUIRED_COMBOS = [
+    ["stockfish-18-lite-single.js", "stockfish-18-lite-single.wasm"],
     ["stockfish-nnue-16-single.js", "stockfish-nnue-16-single.wasm"],
     ["stockfish-18-asm.js"],
 ]
@@ -146,10 +172,12 @@ def are_ready() -> bool:
 
 
 def cleanup_old_files() -> None:
-    """Remove arquivos de versões antigas que ficaram em cache."""
+    """Remove arquivos de versões antigas que ficaram em cache.
+
+    NÃO inclui `stockfish-18-lite-single.*` aqui — a partir da v0.5 esses são a
+    engine principal (ver histórico no topo do módulo).
+    """
     old = [
-        "stockfish-18-lite-single.js",
-        "stockfish-18-lite-single.wasm",
         "stockfish.js",
         "stockfish.wasm",
         "stockfish.worker.js",

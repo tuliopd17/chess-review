@@ -882,7 +882,7 @@
    * @returns {Promise<object>} payload completo com stats
    */
   async function analyzeGame(parsed, pool, opts, onMove) {
-    const depth = opts.depth || 14;
+    const depth = opts.depth || 15;
     const multipv = 2; // precisamos do 2º melhor pra detectar Great
     const moves = parsed.moves;
     const opening = parsed.opening;

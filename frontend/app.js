@@ -614,8 +614,11 @@ async function analyzePgnStreaming(pgn) {
 
     // A análise da partida usa depth menor (e roda em paralelo); o painel ao
     // vivo é que usa a profundidade cheia escolhida no seletor.
+    // Depth 15: com o SF18 lite-single (bem mais rápido que o SF16) dá pra subir
+    // de 14 pra 15 ganhando precisão sem dobrar o tempo (16 fica ~2,2x mais lento
+    // e pesa em máquinas de 4 núcleos). Quem quiser mais rápido escolhe 14 no seletor.
     const depthSel = parseInt(document.getElementById("engine-depth-sel").value, 10);
-    const depth = depthSel > 0 ? Math.min(depthSel, 14) : 14;
+    const depth = depthSel > 0 ? Math.min(depthSel, 15) : 15;
     const result = await ChessReviewAnalysis.analyzeGame(
       parsed,
       pool,

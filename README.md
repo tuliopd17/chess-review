@@ -1,5 +1,7 @@
 # Chess Review
 
+Site: www.chessreview.com.br
+
 Análise gratuita de partidas de xadrez inspirada no **Game Review** do chess.com, feita para a comunidade.
 
 A análise roda **100% no navegador via Stockfish WASM** — você não precisa instalar Stockfish, não precisa de servidor pesado, e os arquivos do engine ficam cacheados na primeira execução. O backend Python só serve o frontend, parseia PGN, identifica aberturas e busca partidas no chess.com / lichess.

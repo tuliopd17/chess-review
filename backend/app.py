@@ -47,6 +47,25 @@ class NoCacheStaticFiles(StaticFiles):
 app = FastAPI(title="Chess Review", version="0.5.0")
 
 
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://code.highcharts.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "img-src 'self' data: https://www.chessreview.com.br; "
+        "connect-src 'self' https://api.chess.com https://lichess.org; "
+        "frame-ancestors 'none';"
+    )
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
 @app.on_event("startup")
 async def _startup_warmup():
     # Remove caches de versões antigas (multi-thread SF11 etc).

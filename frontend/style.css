@@ -117,8 +117,13 @@ main {
      FLEXÍVEIS (1fr) que absorvem a sobra. Assim o tabuleiro (herói) fica sempre
      centralizado e do tamanho ideal — SEM sobra morta dos lados em telas largas —
      e cresce quando as laterais batem no mínimo (300px) em telas estreitas. */
-  grid-template-columns: minmax(300px, 1fr) minmax(0, var(--panel-max)) minmax(300px, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(340px, 1fr) minmax(0, var(--panel-max)) minmax(340px, 1fr);
+  /* Gutter pra afastar o tabuleiro das laterais. As colunas laterais têm mínimo
+     de 340px (pra não espremer o card de importar — os botões precisam caber numa
+     linha só), então o gap fica nesse intervalo confortável. No mobile o ≤1100
+     redefine o gap. */
+  column-gap: clamp(28px, 3.5vw, 56px);
+  row-gap: 16px;
   padding: 16px;
   max-width: 1500px;
   margin: 0 auto;
@@ -869,6 +874,11 @@ footer a { color: var(--accent); }
   .card { padding: 13px; }
 
   .tab-btn { padding: 10px 10px; font-size: 0.9rem; }
+
+  /* No celular o card de importar vem ANTES do tabuleiro — uma caixa de PGN
+     grande empurra o board pra baixo. Encolhe aqui (continua arrastável); no
+     desktop segue com 160px. */
+  #pgn-input { min-height: 84px; }
 
   .eval-bar { width: 18px; flex-basis: 18px; }
 

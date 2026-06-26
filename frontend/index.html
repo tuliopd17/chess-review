@@ -113,13 +113,13 @@
         <h2>Importar partida</h2>
 
         <div class="tabs">
-          <button class="tab-btn active" data-tab="pgn">PGN</button>
-          <button class="tab-btn" data-tab="chesscom">chess.com</button>
+          <button class="tab-btn active" data-tab="chesscom">chess.com</button>
           <button class="tab-btn" data-tab="lichess">lichess</button>
+          <button class="tab-btn" data-tab="pgn">PGN</button>
           <button class="tab-btn" data-tab="history">histórico</button>
         </div>
 
-        <div class="tab-panel active" id="tab-pgn">
+        <div class="tab-panel" id="tab-pgn">
           <textarea id="pgn-input" placeholder="Cole aqui o PGN da partida..."></textarea>
           <div class="row">
             <label class="file-label">
@@ -130,7 +130,7 @@
           </div>
         </div>
 
-        <div class="tab-panel" id="tab-chesscom">
+        <div class="tab-panel active" id="tab-chesscom">
           <input type="text" id="chesscom-user" placeholder="seu_usuario no chess.com" />
           <button id="fetch-chesscom-btn" class="mt-2">Buscar partidas</button>
           <div class="games-list" id="chesscom-games"></div>

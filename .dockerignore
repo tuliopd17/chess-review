@@ -21,3 +21,9 @@ examples/
 
 # OBS: backend/data/ NÃO é ignorado de propósito — contém as aberturas (.tsv) e,
 # se você já rodou local, os binários do Stockfish WASM (que aceleram o build).
+
+# Tooling de build do CSS — node não vai pra imagem (tw.css já vem buildado)
+node_modules/
+package.json
+package-lock.json
+frontend/styles/

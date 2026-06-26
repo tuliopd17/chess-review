@@ -1,0 +1,117 @@
+$marker-color: black;
+$marker-color-info: blue;
+$marker-color-danger: red;
+$marker-color-warning: orange;
+$marker-color-success: green;
+
+.cm-chessboard {
+  .markers {
+    pointer-events: none;
+
+    .marker {
+      &.marker-frame {
+        stroke: $marker-color;
+        stroke-width: 1.8px;
+        opacity: 0.5;
+      }
+
+      &.marker-frame-primary, &.marker-frame-info {
+        stroke: $marker-color-info;
+        stroke-width: 1.8px;
+        opacity: 0.4;
+      }
+
+      &.marker-frame-danger {
+        stroke: $marker-color-danger;
+        stroke-width: 1.8px;
+        opacity: 0.4;
+      }
+
+      &.marker-frame-warning {
+        stroke: $marker-color-warning;
+        stroke-width: 1.8px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle {
+        stroke: $marker-color;
+        stroke-width: 3px;
+        opacity: 0.3;
+      }
+
+      &.marker-circle-primary {
+        stroke: $marker-color-info;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-info {
+        stroke: $marker-color-info;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-info-filled {
+        stroke: $marker-color-info;
+        fill: $marker-color-info;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-danger {
+        stroke: $marker-color-danger;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-danger-filled {
+        stroke: $marker-color-danger;
+        fill: $marker-color-danger;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-warning {
+        stroke: $marker-color-warning;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-warning-filled {
+        stroke: $marker-color-warning;
+        fill: $marker-color-warning;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-success {
+        stroke: $marker-color-success;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-circle-success-filled {
+        stroke: $marker-color-success;
+        fill: $marker-color-success;
+        stroke-width: 3px;
+        opacity: 0.4;
+      }
+
+      &.marker-square {
+        fill: black;
+        opacity: 0.11;
+      }
+
+      &.marker-dot {
+        fill: black;
+        opacity: 0.2;
+      }
+
+      &.marker-bevel {
+        fill: black;
+        opacity: 0.2;
+      }
+
+    }
+  }
+}

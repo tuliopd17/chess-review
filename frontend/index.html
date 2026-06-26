@@ -70,16 +70,30 @@
   }
   </script>
 
+  <!-- Libs de terceiros agora são self-hosted em /static/vendor (cache immutable
+       de 1 ano, sem depender de 3 CDNs externos no caminho crítico). -->
+
   <!-- cm-chessboard CSS + extensions -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/chessboard.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/extensions/markers/markers.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/extensions/arrows/arrows.css" />
+  <link rel="stylesheet" href="/static/vendor/cm-chessboard/assets/chessboard.css" />
+  <link rel="stylesheet" href="/static/vendor/cm-chessboard/assets/extensions/markers/markers.css" />
+  <link rel="stylesheet" href="/static/vendor/cm-chessboard/assets/extensions/arrows/arrows.css" />
 
-  <!-- chess.js (validação de lances no modo exploração) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-  <!-- Highcharts Stock: gráfico de eval estilo chess.com Game Review. -->
-  <script src="https://code.highcharts.com/stock/highstock.js"></script>
+  <!-- Pré-aquece os módulos ESM do tabuleiro (mesmo origin, baixam em paralelo
+       com o resto, sem o waterfall de descoberta tardia). -->
+  <link rel="modulepreload" href="/static/vendor/cm-chessboard/src/Chessboard.js" />
+  <link rel="modulepreload" href="/static/vendor/cm-chessboard/src/extensions/markers/Markers.js" />
+  <link rel="modulepreload" href="/static/vendor/cm-chessboard/src/extensions/arrows/Arrows.js" />
 
+  <!-- chess.js (validação de lances no modo exploração). defer: baixa já, executa
+       depois do parse, sem bloquear o primeiro paint. -->
+  <script defer src="/static/vendor/chess-0.10.3.min.js"></script>
+  <!-- Highcharts NÃO é carregado aqui: é pesado (~374KB) e o gráfico de eval só
+       aparece DEPOIS da análise. É lazy-loaded sob demanda no app.js. -->
+
+  <!-- Tailwind (utilitários purgados, self-hosted). Vem ANTES do style.css: o
+       style.css é unlayered e tem prioridade, então os componentes à mão seguem
+       mandando; o Tailwind serve pros utilitários da UI nova/alterada. -->
+  <link rel="stylesheet" href="/static/tw.css" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -118,13 +132,13 @@
 
         <div class="tab-panel" id="tab-chesscom">
           <input type="text" id="chesscom-user" placeholder="seu_usuario no chess.com" />
-          <button id="fetch-chesscom-btn">Buscar partidas</button>
+          <button id="fetch-chesscom-btn" class="mt-2">Buscar partidas</button>
           <div class="games-list" id="chesscom-games"></div>
         </div>
 
         <div class="tab-panel" id="tab-lichess">
           <input type="text" id="lichess-user" placeholder="seu_usuario no lichess" />
-          <button id="fetch-lichess-btn">Buscar partidas</button>
+          <button id="fetch-lichess-btn" class="mt-2">Buscar partidas</button>
           <div class="games-list" id="lichess-games"></div>
         </div>
 
@@ -197,6 +211,10 @@
       <section class="card live-engine" id="live-engine-card">
         <div class="live-engine-head">
           <h2>Engine ao vivo</h2>
+          <span id="engine-status" class="engine-status loading" role="status" aria-live="polite">
+            <span class="engine-status-dot"></span>
+            <span class="engine-status-text">carregando engine…</span>
+          </span>
         </div>
         <div class="live-engine-meta" id="engine-meta">
           <span id="engine-depth">depth —</span>
@@ -236,7 +254,19 @@
         <div class="progress-text" id="progress-text">0 / 0</div>
       </div>
       <div id="moves-container">
-        <p class="placeholder">Importe uma partida para começar.</p>
+        <!-- Estado vazio (construído com utilitários Tailwind + tokens chess.com).
+             O app.js substitui este conteúdo pela lista de lances ao analisar. -->
+        <div class="flex flex-col items-center gap-2 py-8 px-3 text-center text-muted">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-60" aria-hidden="true">
+            <path d="M8 16l-1 4h10l-1-4" />
+            <path d="M9 16h6l.5-3a3 3 0 0 0-1.2-2.5A2.5 2.5 0 0 0 15 6a3 3 0 1 0-6 0 2.5 2.5 0 0 0 1.7 4.5A3 3 0 0 0 8.5 13z" />
+          </svg>
+          <p class="text-sm font-medium text-ink">Nenhuma partida ainda</p>
+          <p class="text-xs leading-relaxed text-muted/80 max-w-[220px]">
+            Cole um PGN ou busque pelo seu usuário do chess.com / lichess para ver cada lance classificado.
+          </p>
+        </div>
       </div>
     </aside>
   </main>
@@ -248,11 +278,15 @@
     </p>
   </footer>
 
-  <script src="/static/icons.js"></script>
-  <script src="/static/engine_wasm.js"></script>
-  <script src="/static/analysis.js"></script>
-  <!-- cm-chessboard é ES module — carrega o tabuleiro e expõe em window.crBoard -->
+  <!-- defer: baixam em paralelo durante o parse, executam em ordem de documento
+       depois do parse (sem bloquear o primeiro paint). app.js vem ANTES do módulo
+       board_init pra registrar o listener de "crBoardReady" antes do dispatch. -->
+  <script defer src="/static/icons.js"></script>
+  <script defer src="/static/engine_wasm.js"></script>
+  <script defer src="/static/analysis.js"></script>
+  <script defer src="/static/app.js"></script>
+  <!-- cm-chessboard é ES module (deferred por natureza) — monta o tabuleiro e
+       dispara "crBoardReady". Vem por último, depois do app.js. -->
   <script type="module" src="/static/board_init.js"></script>
-  <script src="/static/app.js"></script>
 </body>
 </html>

@@ -44,6 +44,19 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 
+class VendorStaticFiles(StaticFiles):
+    """StaticFiles pras libs de terceiros self-hosted (chess.js, Highcharts,
+    cm-chessboard). São versionadas no caminho/conteúdo e não mudam entre deploys,
+    então cacheia agressivo (1 ano, immutable) — primeiro load baixa, os próximos
+    nem batem no servidor. Tira 3 origens de CDN do caminho crítico.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 app = FastAPI(title="Chess Review", version="0.5.0")
 
 
@@ -105,9 +118,11 @@ async def sf_asset(filename: str):
     return FileResponse(
         str(path),
         media_type=media,
-        # Cache agressivo — os binários têm versão no nome do arquivo.
+        # Cache agressivo e immutable — os binários têm versão no nome do arquivo,
+        # então uma vez baixados (~10MB do WASM) o browser nunca mais rebaixa nem
+        # revalida. 1 ano.
         headers={
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": "public, max-age=31536000, immutable",
             # Headers úteis pra cross-origin (não bloqueiam nada por padrão).
             "Cross-Origin-Resource-Policy": "same-origin",
         },
@@ -247,16 +262,40 @@ def _assets_version() -> str:
         return "0"
 
 
+VENDOR_DIR = FRONTEND_DIR / "vendor"
+
 if FRONTEND_DIR.exists():
+    # IMPORTANTE: monta /static/vendor ANTES de /static (Starlette casa mounts na
+    # ordem). Assim as libs self-hosted ganham cache immutable de 1 ano, enquanto
+    # o resto do frontend (nosso código, que muda) fica no no-cache.
+    if VENDOR_DIR.exists():
+        app.mount("/static/vendor", VendorStaticFiles(directory=str(VENDOR_DIR)), name="vendor")
     app.mount("/static", NoCacheStaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
     @app.get("/")
     async def index():
         html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
         # Acrescenta ?v=<versão> em qualquer href/src que aponte pra /static/
-        # (cache-bust dos assets locais; não toca em URLs de CDN).
+        # (cache-bust dos assets locais; não toca em libs em /static/vendor/, que
+        # são immutable, nem em URLs externas).
         v = _assets_version()
-        html = re.sub(r'(/static/[^"\']+?\.(?:js|css))', rf"\1?v={v}", html)
+        html = re.sub(
+            r'(/static/(?!vendor/)[^"\']+?\.(?:js|css))', rf"\1?v={v}", html
+        )
+
+        # Injeta a URL do engine no <head> server-side. Elimina o roundtrip
+        # /api/health no boot do worker (engine_wasm.js lê window.__CR_ENGINE_URL__
+        # direto), então o worker sobe imediatamente e o loader já começa a baixar
+        # o WASM. (Não usamos <link rel=preload> pro .js/.wasm de propósito: o
+        # destino real é "worker"/fetch do Emscripten, e um preload com `as`/CORS
+        # divergente causaria download duplicado dos ~10MB. O ganho de latência
+        # vem da injeção + cache immutable; preload só depois de medir.)
+        sf_filename = sf_assets.best_available()
+        if sf_filename:
+            sf_js_url = f"/sf/{sf_filename}"
+            inject = f'<script>window.__CR_ENGINE_URL__={sf_js_url!r};</script>\n'
+            html = html.replace("</head>", inject + "</head>", 1)
+
         return Response(
             content=html,
             media_type="text/html",

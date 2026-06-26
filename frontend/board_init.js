@@ -29,12 +29,12 @@ import {
   COLOR,
   INPUT_EVENT_TYPE,
   BORDER_TYPE,
-} from "https://cdn.jsdelivr.net/npm/cm-chessboard@8/src/Chessboard.js";
+} from "/static/vendor/cm-chessboard/src/Chessboard.js";
 
-import { Markers, MARKER_TYPE } from "https://cdn.jsdelivr.net/npm/cm-chessboard@8/src/extensions/markers/Markers.js";
-import { Arrows, ARROW_TYPE } from "https://cdn.jsdelivr.net/npm/cm-chessboard@8/src/extensions/arrows/Arrows.js";
+import { Markers, MARKER_TYPE } from "/static/vendor/cm-chessboard/src/extensions/markers/Markers.js";
+import { Arrows, ARROW_TYPE } from "/static/vendor/cm-chessboard/src/extensions/arrows/Arrows.js";
 
-const ASSETS_URL = "https://cdn.jsdelivr.net/npm/cm-chessboard@8/assets/";
+const ASSETS_URL = "/static/vendor/cm-chessboard/assets/";
 
 // Tipos customizados de marker pra highlight do lance.
 // (Identidade por referência — cuidado pra reusar.)

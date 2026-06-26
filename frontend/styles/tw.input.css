@@ -1,0 +1,64 @@
+/* ============================================================
+   Tailwind v4 — entrada do build do Chess Review
+   ============================================================
+
+   Estratégia HÍBRIDA (decisão de projeto): o style.css escrito à mão continua
+   sendo a base; o Tailwind entra como camada de UTILITÁRIOS pras mudanças de UI
+   daqui pra frente. Por isso NÃO importamos o Preflight (o reset do Tailwind) —
+   ele zeraria margens/estilos e brigaria com o design atual.
+
+   Importamos só os layers `theme` (variáveis) e `utilities` (classes). O
+   resultado é purgado: só as classes realmente usadas nos arquivos abaixo entram
+   no tw.css final.
+
+   Build:  npm run build:css   (ou watch:css)
+   Saída:  frontend/tw.css  (commitada — o Dockerfile continua só-Python).
+*/
+
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Arquivos escaneados pra saber quais utilitários gerar (purge). */
+@source "../index.html";
+@source "../app.js";
+@source "../analysis.js";
+@source "../board_init.js";
+@source "../icons.js";
+
+/* ------------------------------------------------------------
+   Tokens chess.com expostos como tema do Tailwind.
+   ESPELHAM o :root do style.css (fonte de verdade visual) — se mudar uma cor
+   lá, atualize aqui também. Hexes literais (não var()) pra liberar os
+   modificadores de opacidade do Tailwind (ex.: bg-accent/20).
+   ------------------------------------------------------------ */
+@theme {
+  /* Superfícies (madeira escura chess.com) */
+  --color-bg:        #312e2b;
+  --color-card:      #272522;
+  --color-elevated:  #3a3835;
+
+  /* Texto */
+  --color-ink:       #e8e6e3;
+  --color-muted:     #9d9b98;
+
+  /* Verde da marca + perigo */
+  --color-accent:      #81b64c;
+  --color-accent-dark: #6a9a3d;
+  --color-danger:      #ca3431;
+
+  /* Vocabulário de classificações (cores do Game Review — não recolorir) */
+  --color-brilliant:  #26c2a3;
+  --color-great:      #5c8bb0;
+  --color-best:       #81b64c;
+  --color-excellent:  #95bb5a;
+  --color-good:       #b0c98c;
+  --color-book:       #a88865;
+  --color-inaccuracy: #f4bf3f;
+  --color-mistake:    #ef9234;
+  --color-blunder:    #ca3431;
+  --color-miss:       #e0688a;
+
+  /* Raio dos cards */
+  --radius-card: 10px;
+}

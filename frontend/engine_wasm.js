@@ -29,6 +29,14 @@
   }
 
   async function resolveEngineUrl() {
+    // Caminho rápido: o backend injeta a URL do engine no HTML
+    // (window.__CR_ENGINE_URL__), então não precisamos do roundtrip /api/health
+    // antes de subir o worker — o download dos ~10MB começa imediatamente.
+    if (window.__CR_ENGINE_URL__) {
+      log("engine via window.__CR_ENGINE_URL__:", window.__CR_ENGINE_URL__);
+      return window.__CR_ENGINE_URL__;
+    }
+    // Fallback (HTML servido sem injeção, ex.: dev estático): consulta o health.
     try {
       const r = await fetch("/api/health");
       const j = await r.json();

@@ -113,8 +113,11 @@ header h1.brand a:focus-visible { outline: 2px solid var(--accent); outline-offs
 main {
   flex: 1;
   display: grid;
-  /* minmax(0,1fr) deixa a coluna central encolher sem empurrar o layout. */
-  grid-template-columns: 340px minmax(0, 1fr) 320px;
+  /* Coluna central FIXA no tamanho ideal do tabuleiro (--panel-max) e laterais
+     FLEXÍVEIS (1fr) que absorvem a sobra. Assim o tabuleiro (herói) fica sempre
+     centralizado e do tamanho ideal — SEM sobra morta dos lados em telas largas —
+     e cresce quando as laterais batem no mínimo (300px) em telas estreitas. */
+  grid-template-columns: minmax(300px, 1fr) minmax(0, var(--panel-max)) minmax(300px, 1fr);
   gap: 16px;
   padding: 16px;
   max-width: 1500px;
@@ -180,7 +183,7 @@ textarea, input[type="text"] {
 }
 
 textarea {
-  min-height: 100px;
+  min-height: 160px;
   resize: vertical;
   font-family: ui-monospace, "SF Mono", Consolas, monospace;
 }
@@ -704,6 +707,51 @@ footer a { color: var(--accent); }
   margin-bottom: 8px;
 }
 .live-engine-head h2 { margin: 0; }
+
+/* Chip de status da engine (carregando / pronta / erro). Discreto, estilo
+   chess.com: disquinho colorido + label minúsculo. */
+.engine-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.engine-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex: 0 0 8px;
+}
+.engine-status.loading .engine-status-dot {
+  background: var(--c-inaccuracy);
+  animation: cr-status-pulse 1.1s ease-in-out infinite;
+}
+.engine-status.loading { color: var(--c-inaccuracy); }
+.engine-status.ready .engine-status-dot { background: var(--accent); }
+.engine-status.ready { color: var(--accent); }
+.engine-status.error .engine-status-dot { background: var(--danger); }
+.engine-status.error { color: var(--danger); }
+@keyframes cr-status-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+
+/* Dica dentro do card enquanto a engine ainda carrega/baixa. */
+.engine-hint {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  padding: 6px 2px;
+}
+
 .live-engine-meta {
   display: flex;
   gap: 12px;
@@ -775,6 +823,19 @@ footer a { color: var(--accent); }
    Responsivo
    ============================================================ */
 
+/* Desktop largo: o tabuleiro é o HERÓI. Travado em 560px ele ficava pequeno e
+   com sobra dos dois lados numa coluna larga (ex.: 528px de tabuleiro numa
+   coluna de 706px). Aqui o tamanho escala junto com a ALTURA da viewport e a
+   largura disponível: fica grande o quanto a tela permite, sem estourar
+   verticalmente nem virar gigante em monitor enorme (cap 760px). Os painéis que
+   acompanham o tabuleiro (eval bar, controles, gráfico, engine) usam o mesmo
+   --panel-max, então continuam alinhados com ele. */
+@media (min-width: 1101px) {
+  :root {
+    --panel-max: clamp(520px, calc(100vh - 230px), 760px);
+  }
+}
+
 /* Tablet e abaixo: empilha em coluna única e REORDENA pro fluxo natural de uso:
    importar → tabuleiro → lances → resumo/coach. O `display: contents` faz os
    cards da sidebar virarem itens diretos do main, então o `order` funciona. */
@@ -822,4 +883,19 @@ footer a { color: var(--accent); }
      indesejado sem mexer no viewport (zoom manual/pinch continua funcionando)
      e sem alterar a aparencia no desktop. */
   textarea, input[type="text"], select { font-size: 16px; }
+}
+
+/* ============================================================
+   Acessibilidade: respeita quem pediu menos movimento.
+   Mata pulsos/pop-ins/transições não-essenciais sem mudar o layout.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

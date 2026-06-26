@@ -17,3 +17,7 @@ backend/data/openings_index.json
 
 # Logs locais
 *.log
+
+# Node (tooling de build do CSS — Tailwind)
+node_modules/
+npm-debug.log*

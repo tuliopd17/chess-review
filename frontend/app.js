@@ -325,12 +325,42 @@ async function initLiveEngine() {
     if (state.engineReady) startLiveAnalysis(currentFen());
   };
 
+  setEngineStatus("loading");
   try {
     state.engine = new BrowserEngine();
     await state.engine.ready();
     state.engineReady = true;
+    setEngineStatus("ready");
   } catch (e) {
     console.warn("Engine WASM falhou:", e);
+    setEngineStatus("error");
+  }
+}
+
+// Atualiza o chip de status da engine (carregando / pronta / erro) e a dica
+// dentro do card. Deixa a espera dos ~10MB do WASM legível em vez de uma tela
+// muda (princípio "make the wait legible" do skill de UX).
+function setEngineStatus(status) {
+  const chip = document.getElementById("engine-status");
+  const linesEl = document.getElementById("engine-lines");
+  if (chip) {
+    chip.classList.remove("loading", "ready", "error");
+    chip.classList.add(status);
+    const txt = chip.querySelector(".engine-status-text");
+    if (txt) {
+      txt.textContent =
+        status === "ready" ? "pronta" :
+        status === "error" ? "indisponível" : "carregando engine…";
+    }
+  }
+  // Só mexe nas linhas se ainda não há análise rolando (não atropela a PV ao vivo).
+  if (linesEl && Object.keys(state.liveInfo).length === 0) {
+    linesEl.innerHTML =
+      status === "error"
+        ? "<div class='engine-hint'>Engine indisponível. Recarregue a página ou verifique a conexão.</div>"
+        : status === "ready"
+        ? "<div class='engine-hint'>Engine pronta. Importe uma partida para analisar.</div>"
+        : "<div class='engine-hint'>Baixando o Stockfish (~10&nbsp;MB, só na primeira vez). Fica em cache depois.</div>";
   }
 }
 
@@ -912,8 +942,32 @@ function evalToY(cp) {
   return 2 / (1 + Math.exp(-0.4 * pawns)) - 1;
 }
 
-function renderEvalChart() {
+// Carrega o Highcharts Stock sob demanda (1ª vez que um gráfico é montado).
+// Mantém os ~374KB fora do caminho crítico do primeiro paint — o gráfico de eval
+// só aparece depois da análise. Cacheia a Promise pra carregar uma única vez.
+let _highchartsPromise = null;
+function ensureHighcharts() {
+  if (window.Highcharts) return Promise.resolve();
+  if (_highchartsPromise) return _highchartsPromise;
+  _highchartsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "/static/vendor/highstock.js";
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => { _highchartsPromise = null; reject(new Error("falha ao carregar Highcharts")); };
+    document.head.appendChild(s);
+  });
+  return _highchartsPromise;
+}
+
+async function renderEvalChart() {
   document.querySelector(".chart-wrapper").style.display = "";
+  try {
+    await ensureHighcharts();
+  } catch (e) {
+    console.warn(e);
+    return;
+  }
   if (state.evalChart) { state.evalChart.destroy(); state.evalChart = null; }
 
   const moves = currentMoves();

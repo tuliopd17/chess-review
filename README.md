@@ -87,6 +87,16 @@ Ambos ficam em cache em `backend/data/`. Sem internet na primeira execução, o 
 
 Roda no **Google Cloud Run** via Docker. App stateless, sem banco — escala a zero quando não tem tráfego (custo $0 dentro do free tier).
 
+**Deploy contínuo:** todo push na branch `master` dispara um build/deploy automático
+no Cloud Run (Cloud Build trigger configurado no Google Cloud). Não precisa rodar
+nada à mão — `git push` já sobe pra produção.
+
+> ⚠️ Antes de commitar mudanças de CSS no frontend, rode `npm run build:css` pra
+> regenerar o `frontend/tw.css` (Tailwind). O Dockerfile **não** builda o CSS —
+> ele consome o `tw.css` já commitado (ver "Build do frontend" abaixo).
+
+Deploy manual (fallback, ou pra primeira configuração):
+
 ```bash
 # da raiz do repo; o Cloud Build builda o Dockerfile e injeta $PORT
 gcloud run deploy chess-review \
@@ -97,7 +107,9 @@ gcloud run deploy chess-review \
   --min-instances 0 --max-instances 3
 ```
 
-URL pública gerada pelo Cloud Run; domínio custom (`www.chessreview.com.br`) via *domain mapping* do Cloud Run. O `Dockerfile` é portável (`$PORT` com fallback 8000), então roda igual em qualquer plataforma de container.
+URL pública gerada pelo Cloud Run; domínio custom (`www.chessreview.com.br`) servido
+via Cloudflare Worker na frente do Cloud Run. O `Dockerfile` é portável (`$PORT` com
+fallback 8000), então roda igual em qualquer plataforma de container.
 
 ## Estrutura do projeto
 
@@ -112,17 +124,42 @@ chess-review/
 │   └── data/             # Cache de aberturas e WASM (gerado em runtime)
 ├── frontend/
 │   ├── index.html        # UI single-page
-│   ├── style.css         # Estilos (paleta inspirada no chess.com)
+│   ├── style.css         # Estilos à mão (paleta/tokens inspirados no chess.com)
+│   ├── tw.css            # CSS do Tailwind (BUILDADO/commitado — não editar à mão)
+│   ├── styles/
+│   │   └── tw.input.css  # Entrada do Tailwind (tokens chess.com como tema)
 │   ├── icons.js          # SVGs das classificações
-│   ├── engine_wasm.js    # Wrapper do Stockfish WASM
+│   ├── engine_wasm.js    # Wrapper do Stockfish WASM (pool de Web Workers)
+│   ├── board_init.js     # Bootstrap do cm-chessboard (ESM) -> window.crBoard
 │   ├── analysis.js       # Lógica completa de análise da partida (no browser)
-│   └── app.js            # UI principal (importação, navegação, exploração, histórico)
+│   ├── app.js            # UI principal (importação, navegação, exploração, histórico)
+│   └── vendor/           # Libs de terceiros self-hosted (cm-chessboard, chess.js,
+│                         #   Highcharts) — servidas same-origin, cache immutable
 ├── examples/
 │   └── kasparov-deep-blue-1997.pgn
+├── package.json          # Tooling do build de CSS (Tailwind) — o app é Python
 ├── requirements.txt
 ├── run.py                # Ponto de entrada (uvicorn + abre browser)
 └── README.md
 ```
+
+## Build do frontend (CSS / Tailwind)
+
+O CSS é híbrido: o `style.css` escrito à mão é a base (tokens chess.com,
+componentes, layout, responsivo) e o **Tailwind v4** entra como camada de
+utilitários pra UI nova/alterada. O Tailwind é buildado pela CLI, **purgado** e
+servido self-hosted — sem CDN, sem Preflight (não reseta o design existente).
+
+```bash
+npm install          # uma vez (instala a CLI do Tailwind como devDependency)
+npm run build:css    # gera frontend/tw.css (purgado + minificado)
+npm run watch:css    # rebuild automático enquanto desenvolve
+```
+
+O `frontend/tw.css` é **commitado** — assim o `Dockerfile` continua só-Python
+(não precisa de Node na imagem). Mudou classe de utilitário? Rode `build:css`
+antes de commitar. Os tokens do tema vivem em `frontend/styles/tw.input.css` e
+**espelham** o `:root` do `style.css` (mude nos dois se mexer numa cor).
 
 ## API do backend
 
@@ -199,4 +236,5 @@ MIT. Use, compartilhe e melhore.
 - [nmrugg/stockfish.js](https://github.com/nmrugg/stockfish.js) — build WASM (GPLv3)
 - [python-chess](https://python-chess.readthedocs.io/) — parser PGN
 - [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings) — base de aberturas
-- [chessboard.js](https://chessboardjs.com/) + [chess.js](https://github.com/jhlywa/chess.js) + [Chart.js](https://www.chartjs.org/) — UI
+- [cm-chessboard](https://github.com/shaack/cm-chessboard) + [chess.js](https://github.com/jhlywa/chess.js) + [Highcharts Stock](https://www.highcharts.com/) — UI (self-hosted em `frontend/vendor/`)
+- [Tailwind CSS](https://tailwindcss.com/) — utilitários do frontend (build self-hosted)

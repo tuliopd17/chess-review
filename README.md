@@ -83,6 +83,22 @@ Ambos ficam em cache em `backend/data/`. Sem internet na primeira execução, o 
 | `CHESS_REVIEW_HOST` | `127.0.0.1` | Host do servidor |
 | `CHESS_REVIEW_PORT` | `8000` | Porta do servidor |
 
+## Deploy (produção)
+
+Roda no **Google Cloud Run** via Docker. App stateless, sem banco — escala a zero quando não tem tráfego (custo $0 dentro do free tier).
+
+```bash
+# da raiz do repo; o Cloud Build builda o Dockerfile e injeta $PORT
+gcloud run deploy chess-review \
+  --source . \
+  --region southamerica-east1 \
+  --allow-unauthenticated \
+  --memory 512Mi --cpu 1 \
+  --min-instances 0 --max-instances 3
+```
+
+URL pública gerada pelo Cloud Run; domínio custom (`www.chessreview.com.br`) via *domain mapping* do Cloud Run. O `Dockerfile` é portável (`$PORT` com fallback 8000), então roda igual em qualquer plataforma de container.
+
 ## Estrutura do projeto
 
 ```

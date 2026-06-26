@@ -27,7 +27,7 @@ COPY . .
 #    Idempotente: se já existem, só valida e segue.
 RUN python -c "import backend.sf_assets as s; [s.ensure_downloaded(f) for f in ('stockfish-18-lite-single.js','stockfish-18-lite-single.wasm','stockfish-nnue-16-single.js','stockfish-nnue-16-single.wasm','stockfish-18-asm.js')]; import backend.openings as o; o.detect_opening_for_game(['e2e4']); print('Stockfish WASM:', s.are_ready(), '| aberturas:', o.is_loaded())"
 
-# A plataforma (Render/Railway) injeta a porta via $PORT; fallback 8000 (Fly/local).
+# A plataforma (Cloud Run/Railway) injeta a porta via $PORT; fallback 8000 (local).
 ENV PORT=8000
 EXPOSE 8000
 

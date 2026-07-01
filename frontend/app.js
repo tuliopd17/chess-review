@@ -293,6 +293,12 @@ function initImportButtons() {
     const u = document.getElementById("lichess-user").value.trim();
     if (u) fetchGames("lichess", u, "lichess-games");
   };
+  document.getElementById("chesscom-user").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("fetch-chesscom-btn").click();
+  });
+  document.getElementById("lichess-user").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("fetch-lichess-btn").click();
+  });
 
   document.getElementById("clear-history-btn").onclick = () => {
     if (!confirm("Apagar todas as análises do histórico?")) return;

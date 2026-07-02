@@ -383,6 +383,14 @@ button.danger:hover { background: var(--danger); color: white; }
 /* Arredonda os cantos do SVG do tabuleiro sem clipar os overlays (badges). */
 .cm-chessboard { clip-path: inset(0 round 6px); border-radius: 6px; }
 
+/* Tema madeira mais escuro (sobrescreve o "default" claro do cm-chessboard). */
+.cm-chessboard.default .board .square.white { fill: #b8956a; }
+.cm-chessboard.default .board .square.black { fill: #7f5b3a; }
+.cm-chessboard.default.border-type-none .board .border,
+.cm-chessboard.default.border-type-thin .board .border { fill: #7f5b3a; stroke: #7f5b3a; }
+.cm-chessboard.default .coordinates .coordinate.white { fill: #7f5b3a; }
+.cm-chessboard.default .coordinates .coordinate.black { fill: #d9c1a0; }
+
 /* =====  cm-chessboard customizations  =====
    Markers usam <use href="#markerXxx"> dentro de <g class="markers">.
    Sobrescrevemos fill/stroke das nossas classes.                       */

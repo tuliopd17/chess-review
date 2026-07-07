@@ -18,6 +18,12 @@ backend/data/openings_index.json
 # Logs locais
 *.log
 
+# Cache de testes
+.pytest_cache/
+
+# Saída do graphify (knowledge graph local)
+graphify-out/
+
 # Node (tooling de build do CSS — Tailwind)
 node_modules/
 npm-debug.log*

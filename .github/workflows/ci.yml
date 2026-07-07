@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  frontend-tests:
+    name: Testes do frontend (analysis.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Sem deps de runtime (o motor de classificação é JS puro + chess.js
+      # self-hosted); o test runner nativo do Node roda direto.
+      - name: node --test
+        run: npm test
+
+  backend-tests:
+    name: Testes do backend (FastAPI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instala dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: pytest
+        run: python -m pytest tests/ -q
+
+  css-build:
+    name: Build do CSS (Tailwind)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Instala Tailwind
+        run: npm install
+      - name: Compila o CSS
+        run: npm run build:css

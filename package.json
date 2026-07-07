@@ -5,7 +5,11 @@
   "description": "Build do CSS (Tailwind v4) do frontend do Chess Review. O app em si é Python/FastAPI servindo estáticos; este package.json existe só pra gerar o tw.css purgado.",
   "scripts": {
     "build:css": "tailwindcss -i frontend/styles/tw.input.css -o frontend/tw.css --minify",
-    "watch:css": "tailwindcss -i frontend/styles/tw.input.css -o frontend/tw.css --watch"
+    "watch:css": "tailwindcss -i frontend/styles/tw.input.css -o frontend/tw.css --watch",
+    "test": "node --test tests/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4",

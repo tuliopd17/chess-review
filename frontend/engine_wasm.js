@@ -333,22 +333,64 @@
      * entre os workers do pool. `optsFor(index)` devolve { depth, multipv } por
      * posição. `onResult(index, info)` é chamado conforme cada análise termina —
      * FORA DE ORDEM (quem terminar primeiro reporta primeiro).
+     *
+     * Resiliência: um worker WASM pode travar ou estourar o timeout e devolver um
+     * resultado VAZIO (sem score). Sem tratar isso, aquela posição ficaria com
+     * eval 0 silenciosamente e contaminaria a classificação. Então validamos cada
+     * resultado; se vier inválido, RECICLAMOS o engine daquele slot (novo Worker)
+     * e re-enfileiramos a posição, até MAX_ATTEMPTS. Só depois disso desistimos e
+     * reportamos o que veio — o pior caso é uma posição neutra, nunca um travamento.
      */
     async analyzeAll(positions, optsFor, onResult) {
       await this.ready();
       const myBatch = ++this._batchId;
+      const MAX_ATTEMPTS = 3;
+      const attempts = new Array(positions.length).fill(0);
+      const retry = [];        // índices a re-tentar (prioridade sobre os novos)
       let next = 0;
-      const runOn = async (engine) => {
+
+      const takeIndex = () => {
+        if (retry.length) return retry.pop();
+        if (next < positions.length) return next++;
+        return -1;
+      };
+      // Um resultado é utilizável se a linha principal (multipv 1) tem score.
+      const isValid = (info) => !!(info && info[1] && info[1].score);
+
+      const runSlot = async (slot) => {
         while (true) {
           if (myBatch !== this._batchId) return; // cancelado por um novo batch
-          const i = next++;
-          if (i >= positions.length) return;
-          const info = await engine.analyzeOnce(positions[i], optsFor(i));
+          const i = takeIndex();
+          if (i === -1) return;
+          attempts[i]++;
+          let info = null;
+          try {
+            info = await this.engines[slot].analyzeOnce(positions[i], optsFor(i));
+          } catch (e) {
+            info = null;
+          }
           if (myBatch !== this._batchId) return;
-          onResult(i, info);
+
+          if (isValid(info)) {
+            onResult(i, info);
+            continue;
+          }
+          if (attempts[i] < MAX_ATTEMPTS) {
+            // Engine provavelmente travou: troca por um Worker novo e re-tenta.
+            console.warn(`[pool] slot ${slot}: resultado inválido na posição ${i} (tentativa ${attempts[i]}); reciclando engine`);
+            retry.push(i);
+            try { this.engines[slot].quit(); } catch {}
+            const ne = new BrowserEngine(this.engineOpts);
+            try { await ne.ready(); } catch (e) { console.warn("[pool] falha ao reiniciar engine:", e); }
+            this.engines[slot] = ne;
+          } else {
+            // Esgotou as tentativas: reporta o que houver (posição neutra) e segue.
+            console.warn(`[pool] posição ${i} falhou após ${MAX_ATTEMPTS} tentativas; reportando resultado parcial`);
+            onResult(i, info || {});
+          }
         }
       };
-      await Promise.all(this.engines.map(runOn));
+      await Promise.all(this.engines.map((_, slot) => runSlot(slot)));
     }
 
     cancelAll() {

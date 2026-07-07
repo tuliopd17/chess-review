@@ -18,6 +18,7 @@ const state = {
   orientation: "white",
   totalPlies: 0,
   streaming: false,
+  currentPgn: null,        // PGN da análise atual (pra gerar o link compartilhável)
 
   // ----- Engine WASM ao vivo -----
   engine: null,            // BrowserEngine (instância única, painel ao vivo + exploração)
@@ -83,6 +84,8 @@ function bootApp() {
   initHistory();
   initLiveEngine();
   initBrandHome();
+  initShare();
+  loadFromHash();
 }
 
 // Clique no logo do header recarrega a página (mesmo se já estiver em "/")
@@ -300,15 +303,115 @@ function initImportButtons() {
     if (e.key === "Enter") document.getElementById("fetch-lichess-btn").click();
   });
 
-  document.getElementById("clear-history-btn").onclick = () => {
+  document.getElementById("clear-history-btn").onclick = async () => {
     if (!confirm("Apagar todas as análises do histórico?")) return;
-    localStorage.removeItem(HISTORY_KEY);
-    renderHistory();
+    await HistoryStore.clear();
+    await renderHistory();
   };
 }
 
 function initHistory() {
   renderHistory();
+}
+
+/* ============================================================
+   Link compartilhável (permalink)
+   ============================================================
+   Codifica o PGN da análise no hash da URL — nada vai pro servidor, o link
+   carrega a partida direto. Usa gzip nativo (CompressionStream) quando
+   disponível pra caber PGNs longos em URLs curtas; senão, base64 puro.
+   Prefixo do hash indica o formato: "#g=" gzip+base64url, "#p=" base64url cru. */
+
+function _b64urlEncode(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function _b64urlDecode(str) {
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (str.length % 4) str += "=";
+  const bin = atob(str);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function encodePgnToHash(pgn) {
+  const raw = new TextEncoder().encode(pgn);
+  if (typeof CompressionStream === "function") {
+    const cs = new CompressionStream("gzip");
+    const w = cs.writable.getWriter();
+    w.write(raw); w.close();
+    const buf = await new Response(cs.readable).arrayBuffer();
+    return "g=" + _b64urlEncode(new Uint8Array(buf));
+  }
+  return "p=" + _b64urlEncode(raw);
+}
+
+async function decodePgnFromHash(hash) {
+  const raw = hash.replace(/^#/, "");
+  const eq = raw.indexOf("=");
+  if (eq < 0) return null;
+  const key = raw.slice(0, eq);
+  const val = raw.slice(eq + 1);
+  if (!val) return null;
+  let bytes;
+  try { bytes = _b64urlDecode(val); } catch { return null; }
+  if (key === "g") {
+    if (typeof DecompressionStream !== "function") return null;
+    const ds = new DecompressionStream("gzip");
+    const w = ds.writable.getWriter();
+    w.write(bytes); w.close();
+    const buf = await new Response(ds.readable).arrayBuffer();
+    return new TextDecoder().decode(buf);
+  }
+  if (key === "p") return new TextDecoder().decode(bytes);
+  return null;
+}
+
+function initShare() {
+  const btn = document.getElementById("share-btn");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const pgn = state.currentPgn;
+    if (!pgn) { alert("Analise uma partida antes de compartilhar."); return; }
+    let url;
+    try {
+      const encoded = await encodePgnToHash(pgn);
+      url = `${location.origin}${location.pathname}#${encoded}`;
+    } catch (e) {
+      console.warn("[share] falha ao codificar:", e);
+      alert("Não foi possível gerar o link.");
+      return;
+    }
+    // Atualiza a URL da aba (sem recarregar) e copia pro clipboard.
+    try { history.replaceState(null, "", url); } catch {}
+    const done = (msg) => {
+      const old = btn.textContent;
+      btn.textContent = msg;
+      setTimeout(() => { btn.textContent = old; }, 1600);
+    };
+    try {
+      await navigator.clipboard.writeText(url);
+      done("✓ Link copiado!");
+    } catch {
+      // Clipboard bloqueado (http, permissão): mostra o link pro usuário copiar.
+      window.prompt("Copie o link da análise:", url);
+    }
+  });
+}
+
+// No boot: se a URL trouxer um PGN no hash, carrega e analisa direto.
+async function loadFromHash() {
+  if (!location.hash || location.hash.length < 3) return;
+  let pgn;
+  try { pgn = await decodePgnFromHash(location.hash); } catch { pgn = null; }
+  if (!pgn || !pgn.trim()) return;
+  const input = document.getElementById("pgn-input");
+  if (input) input.value = pgn;
+  document.querySelector(".tab-btn[data-tab='pgn']")?.click();
+  analyzePgnStreaming(pgn);
 }
 
 /* ============================================================
@@ -583,11 +686,12 @@ async function analyzePgnStreaming(pgn) {
   // Toda nova chamada invalida a análise anterior (evita corrida se o usuário
   // clicar em outra partida no meio de uma análise) e cancela trabalho pendente.
   const runId = ++state.analysisRunId;
+  state.currentPgn = pgn; // habilita o botão de compartilhar pra esta partida
   try { state.enginePool?.cancelAll(); } catch {}
   try { state.engine?.cancelAll(); } catch {}
 
   // Cache local: se já temos essa análise salva, abre direto.
-  const cached = getHistoryEntry(pgn);
+  const cached = await getHistoryEntry(pgn);
   if (cached) {
     state.analysis = cached.analysis;
     state.partialMoves = cached.analysis.moves.slice();
@@ -671,7 +775,9 @@ async function analyzePgnStreaming(pgn) {
     state.partialMoves = result.moves;
     showProgress(false);
     renderAll(false);
-    saveToHistory(pgn, result);
+    // Persiste sem bloquear nem contaminar o caminho de sucesso: se o save
+    // falhar, apenas loga (a análise em si já está na tela).
+    saveToHistory(pgn, result).catch((err) => console.warn("[history] falha ao salvar:", err));
   } catch (e) {
     console.error(e);
     if (runId === state.analysisRunId) {
@@ -1286,17 +1392,129 @@ function renderBoardOverlays() {
 }
 
 // ============================================================
-// Histórico local
+// Histórico local — IndexedDB (com LRU) + fallback localStorage
 // ============================================================
-function getHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
-  catch { return []; }
-}
+// Antes o histórico inteiro (cada análise com TODAS as PVs) morava numa única
+// chave do localStorage (~5MB de cota). Com dezenas de partidas isso estourava
+// QuotaExceededError e o save falhava silenciosamente. Agora cada análise vai
+// pro IndexedDB (cota de centenas de MB), com política LRU (mantém as
+// HISTORY_MAX mais recentes). Browsers sem IDB (ou modo privado) caem num
+// fallback localStorage que também descarta as mais antigas ao bater a cota.
+const HistoryStore = (() => {
+  const DB_NAME = "chess_review";
+  const STORE = "history";
+  const DB_VERSION = 1;
+  let _dbPromise = null;
+  let _useIdb = null; // null=indefinido; true/false após a 1ª tentativa
 
-function saveHistory(list) {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX))); }
-  catch (e) { console.warn("history save failed", e); }
-}
+  function openDB() {
+    if (_dbPromise) return _dbPromise;
+    _dbPromise = new Promise((resolve, reject) => {
+      if (!("indexedDB" in window) || !window.indexedDB) { reject(new Error("sem IndexedDB")); return; }
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          const os = db.createObjectStore(STORE, { keyPath: "id" });
+          os.createIndex("saved_at", "saved_at");
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return _dbPromise;
+  }
+
+  const store = (db, mode) => db.transaction(STORE, mode).objectStore(STORE);
+  const reqP = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+
+  // ----- Fallback localStorage -----
+  const ls = {
+    all() { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } },
+    write(list) {
+      // Ordena por saved_at desc, corta em HISTORY_MAX e, se ainda estourar a
+      // cota, vai descartando os mais antigos (o fim da lista) até caber.
+      let arr = list.slice().sort((a, b) => (b.saved_at || "").localeCompare(a.saved_at || "")).slice(0, HISTORY_MAX);
+      while (arr.length) {
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); return; }
+        catch { arr = arr.slice(0, arr.length - 1); }
+      }
+      try { localStorage.removeItem(HISTORY_KEY); } catch {}
+    },
+  };
+
+  async function withIdb(fn, fallback) {
+    if (_useIdb === false) return fallback();
+    try {
+      const db = await openDB();
+      _useIdb = true;
+      return await fn(db);
+    } catch (e) {
+      _useIdb = false;
+      console.warn("[history] IndexedDB indisponível; usando localStorage:", e.message);
+      return fallback();
+    }
+  }
+
+  // Migração única: IDB vazio + histórico velho no localStorage => importa e limpa.
+  async function migrate(db) {
+    if ((await reqP(store(db, "readonly").count())) > 0) return;
+    let old = [];
+    try { old = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch {}
+    if (!old.length) return;
+    const os = store(db, "readwrite");
+    for (const e of old) os.put(e);
+    try { localStorage.removeItem(HISTORY_KEY); } catch {}
+  }
+
+  // LRU: mantém só as HISTORY_MAX entradas mais recentes (apaga as mais antigas).
+  async function enforceLru(db) {
+    const count = await reqP(store(db, "readonly").count());
+    let excess = count - HISTORY_MAX;
+    if (excess <= 0) return;
+    await new Promise((res, rej) => {
+      const cur = store(db, "readwrite").index("saved_at").openCursor(); // saved_at asc
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c || excess <= 0) { res(); return; }
+        c.delete(); excess--; c.continue();
+      };
+      cur.onerror = () => rej(cur.error);
+    });
+  }
+
+  return {
+    async getAll() {
+      return withIdb(async (db) => {
+        await migrate(db);
+        const list = await reqP(store(db, "readonly").getAll());
+        return list.sort((a, b) => (b.saved_at || "").localeCompare(a.saved_at || ""));
+      }, () => ls.all().sort((a, b) => (b.saved_at || "").localeCompare(a.saved_at || "")));
+    },
+    async get(id) {
+      return withIdb(
+        async (db) => (await reqP(store(db, "readonly").get(id))) || null,
+        () => ls.all().find((e) => e.id === id) || null,
+      );
+    },
+    async put(entry) {
+      return withIdb(async (db) => {
+        await reqP(store(db, "readwrite").put(entry));
+        await enforceLru(db);
+      }, () => {
+        const list = ls.all().filter((e) => e.id !== entry.id);
+        list.push(entry);
+        ls.write(list);
+      });
+    },
+    async clear() {
+      return withIdb(
+        async (db) => { await reqP(store(db, "readwrite").clear()); },
+        () => { try { localStorage.removeItem(HISTORY_KEY); } catch {} },
+      );
+    },
+  };
+})();
 
 function pgnHash(pgn) {
   // Hash simples FNV-like.
@@ -1308,16 +1526,14 @@ function pgnHash(pgn) {
   return h.toString(16);
 }
 
-function getHistoryEntry(pgn) {
-  const id = pgnHash(pgn);
-  return getHistory().find(e => e.id === id) || null;
+async function getHistoryEntry(pgn) {
+  return HistoryStore.get(pgnHash(pgn));
 }
 
-function saveToHistory(pgn, analysis) {
+async function saveToHistory(pgn, analysis) {
   const id = pgnHash(pgn);
-  const list = getHistory().filter(e => e.id !== id);
   const h = analysis.headers || {};
-  list.unshift({
+  await HistoryStore.put({
     id,
     pgn,
     analysis,
@@ -1332,12 +1548,11 @@ function saveToHistory(pgn, analysis) {
       opening: analysis.opening?.name || "",
     },
   });
-  saveHistory(list);
-  renderHistory();
+  await renderHistory();
 }
 
-function renderHistory() {
-  const list = getHistory();
+async function renderHistory() {
+  const list = await HistoryStore.getAll();
   const container = document.getElementById("history-list");
   if (!list.length) {
     container.innerHTML = "<p class='placeholder'>Sem análises salvas.</p>";

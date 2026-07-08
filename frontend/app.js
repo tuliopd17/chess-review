@@ -18,7 +18,7 @@ const state = {
   orientation: "white",
   totalPlies: 0,
   streaming: false,
-  currentPgn: null,        // PGN da análise atual (pra gerar o link compartilhável)
+  currentPgn: null,        // PGN da análise atual
 
   // ----- Engine WASM ao vivo -----
   engine: null,            // BrowserEngine (instância única, painel ao vivo + exploração)
@@ -84,7 +84,6 @@ function bootApp() {
   initHistory();
   initLiveEngine();
   initBrandHome();
-  initShare();
   loadFromHash();
 }
 
@@ -277,7 +276,13 @@ function initImportButtons() {
   document.getElementById("analyze-pgn-btn").onclick = () => {
     const pgn = document.getElementById("pgn-input").value.trim();
     if (!pgn) { alert("Cole um PGN primeiro."); return; }
-    analyzePgnStreaming(pgn);
+    // Tenta detectar o username do jogador a partir dos campos de busca
+    // preenchidos (chess.com ou Lichess) — assim o PGN colado também
+    // auto-detecta o lado certo.
+    const chesscomUser = document.getElementById("chesscom-user").value.trim();
+    const lichessUser = document.getElementById("lichess-user").value.trim();
+    const playerUsername = chesscomUser || lichessUser || null;
+    analyzePgnStreaming(pgn, playerUsername);
   };
 
   document.getElementById("pgn-file").addEventListener("change", (e) => {
@@ -368,38 +373,6 @@ async function decodePgnFromHash(hash) {
   }
   if (key === "p") return new TextDecoder().decode(bytes);
   return null;
-}
-
-function initShare() {
-  const btn = document.getElementById("share-btn");
-  if (!btn) return;
-  btn.addEventListener("click", async () => {
-    const pgn = state.currentPgn;
-    if (!pgn) { alert("Analise uma partida antes de compartilhar."); return; }
-    let url;
-    try {
-      const encoded = await encodePgnToHash(pgn);
-      url = `${location.origin}${location.pathname}#${encoded}`;
-    } catch (e) {
-      console.warn("[share] falha ao codificar:", e);
-      alert("Não foi possível gerar o link.");
-      return;
-    }
-    // Atualiza a URL da aba (sem recarregar) e copia pro clipboard.
-    try { history.replaceState(null, "", url); } catch {}
-    const done = (msg) => {
-      const old = btn.textContent;
-      btn.textContent = msg;
-      setTimeout(() => { btn.textContent = old; }, 1600);
-    };
-    try {
-      await navigator.clipboard.writeText(url);
-      done("✓ Link copiado!");
-    } catch {
-      // Clipboard bloqueado (http, permissão): mostra o link pro usuário copiar.
-      window.prompt("Copie o link da análise:", url);
-    }
-  });
 }
 
 // No boot: se a URL trouxer um PGN no hash, carrega e analisa direto.
@@ -670,7 +643,8 @@ async function fetchGames(source, username, containerId) {
       el.onclick = () => {
         document.getElementById("pgn-input").value = g.pgn;
         document.querySelector(".tab-btn[data-tab='pgn']").click();
-        analyzePgnStreaming(g.pgn);
+        // Passa o username pra auto-detectar o lado do jogador.
+        analyzePgnStreaming(g.pgn, username);
       };
       container.appendChild(el);
     });
@@ -682,11 +656,11 @@ async function fetchGames(source, username, containerId) {
 // ============================================================
 // Análise da partida (Stockfish WASM no browser)
 // ============================================================
-async function analyzePgnStreaming(pgn) {
+async function analyzePgnStreaming(pgn, playerUsername = null) {
   // Toda nova chamada invalida a análise anterior (evita corrida se o usuário
   // clicar em outra partida no meio de uma análise) e cancela trabalho pendente.
   const runId = ++state.analysisRunId;
-  state.currentPgn = pgn; // habilita o botão de compartilhar pra esta partida
+  state.currentPgn = pgn;
   try { state.enginePool?.cancelAll(); } catch {}
   try { state.engine?.cancelAll(); } catch {}
 
@@ -698,6 +672,8 @@ async function analyzePgnStreaming(pgn) {
     state.partialHeaders = cached.analysis.headers;
     state.partialOpening = cached.analysis.opening;
     state.totalPlies = cached.analysis.moves.length;
+    // Auto-detecta orientação mesmo do cache (se tiver username)
+    autoDetectOrientation(cached.analysis.headers, playerUsername);
     showProgress(false);
     renderAll(true);
     return;
@@ -733,6 +709,9 @@ async function analyzePgnStreaming(pgn) {
   state.partialHeaders = parsed.headers;
   state.partialOpening = parsed.opening;
   state.totalPlies = parsed.moves.length;
+  // Auto-detecta orientação do tabuleiro: se o jogador está de pretas,
+  // vira o tabuleiro pra ele ver da perspectiva dele.
+  autoDetectOrientation(parsed.headers, playerUsername);
   renderOpening(parsed.opening);
   renderPlayerBars();
   showProgress(true, 0, state.totalPlies);
@@ -796,6 +775,10 @@ function resetForNewAnalysis() {
   state.partialOpening = null;
   state.totalPlies = 0;
   state.currentPly = 0;
+  // Reseta orientação pra "white" — autoDetectOrientation redefine depois
+  // se o jogador for as pretas.
+  state.orientation = "white";
+  state.board.setOrientation("white", false);
   document.getElementById("moves-container").innerHTML = "";
   document.getElementById("opening-card").style.display = "none";
   document.getElementById("summary-card").style.display = "none";
@@ -835,6 +818,57 @@ function renderAll(fromCache) {
   renderCoach();
   renderEvalChart();
   goToPly(0);
+}
+
+/**
+ * Auto-detecta de que lado o jogador está (brancas ou pretas) e orienta o
+ * tabuleiro pra ele ver a partida da própria perspectiva.
+ *
+ * Compara `playerUsername` (case-insensitive) com os headers White/Black do PGN.
+ * Se o jogador for as pretas, vira o tabuleiro (orientation = "black").
+ * Se for as brancas ou se não for possível identificar, mantém "white".
+ *
+ * Também funciona quando o username aparece como parte do nome (ex.: no
+ * chess.com o header White pode ser "GMHikaru (3250)" e o username "gmhikaru").
+ */
+function autoDetectOrientation(headers, playerUsername) {
+  if (!playerUsername || !headers) return;
+
+  const needle = playerUsername.toLowerCase().trim();
+  if (!needle) return;
+
+  const white = (headers.White || "").toLowerCase();
+  const black = (headers.Black || "").toLowerCase();
+
+  // Verifica se o username bate com o jogador de pretas.
+  // Comparação exata primeiro, depois verifica se o nome contém o username
+  // (chess.com costuma por rating entre parênteses no header, ex.: "Fulano (1800)").
+  const isBlack =
+    black === needle ||
+    black.includes(needle) ||
+    black.startsWith(needle + " ") ||
+    black.includes("(" + needle + ")");
+
+  // Só vira se o jogador realmente for as pretas (pra não virar sem necessidade
+  // quando o username não bate com ninguém).
+  if (isBlack) {
+    state.orientation = "black";
+    state.board.setOrientation("black", false); // sem animação pra não piscar na carga
+    return;
+  }
+
+  // Jogador é as brancas — orientação já é "white" por padrão, mas garantimos.
+  const isWhite =
+    white === needle ||
+    white.includes(needle) ||
+    white.startsWith(needle + " ") ||
+    white.includes("(" + needle + ")");
+
+  if (isWhite) {
+    state.orientation = "white";
+    state.board.setOrientation("white", false);
+  }
+  // Se não bateu com ninguém, mantém o padrão (white).
 }
 
 // Mostra os nomes dos jogadores em barras acima/abaixo do tabuleiro,

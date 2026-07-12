@@ -144,22 +144,19 @@
     return Math.round(elo);
   }
 
-  // ===== Análise de peças penduradas / sacrifício (estilo chess.com) =====
+  // ===== Segurança de peças / sacrifício (port do WintrCat/wintrchess) =====
   //
-  // Para classificar "Lance Brilhante" de forma fiel ao chess.com precisamos
-  // saber se o lance DEIXA uma peça de valor pendurada de propósito (um
-  // sacrifício REAL), não só uma troca. Portamos os três helpers da
-  // implementação de referência (WintrCat/freechess), que por sua vez replica o
-  // Game Review do chess.com, e adaptamos ao chess.js 0.10.3 (cujo `.move()`
-  // devolve null em vez de lançar exceção, usa `in_check()` em snake_case e cujo
-  // `.board()` NÃO inclui o campo `square`).
+  // Base das classificações Brilliant e Great: o framework de "peças inseguras"
+  // do wintrchess (sucessor do freechess; réplica aberta mais fiel do Game
+  // Review do chess.com). Adaptado ao chess.js 0.10.3: `.move()` devolve null
+  // em vez de lançar exceção, `in_check()` é snake_case, não existe
+  // `.attackers()` (o rei atacante é detectado por adjacência) e `.board()`
+  // não inclui o campo `square`.
 
   const FILES = "abcdefgh";
 
-  // Valores em peões. `k` = Infinity (rei nunca "pendura"), `m` = 0 (casa vazia,
-  // usado como sentinela quando não houve captura).
-  const PIECE_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: Infinity, m: 0 };
-  const PROMOS = [undefined, "b", "n", "r", "q"];
+  // Valores em peões; rei = Infinity (nunca conta como peça "insegura").
+  const PIECE_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: Infinity };
 
   // Casa (ex.: "e4") a partir dos índices de board(): row 0 = 8ª fileira.
   function sqFromRC(r, f) { return FILES[f] + (8 - r); }
@@ -172,229 +169,361 @@
       .replace(/ ([a-h][36]) /, " - ");
   }
 
-  // Todas as peças que podem CAPTURAR a peça em `square` (mais o rei inimigo, se
-  // a captura dele for legal). Devolve [{square, color, type}].
-  function getAttackers(fen, square) {
-    const attackers = [];
-    let probe;
-    try { probe = new Chess(fen); } catch (e) { return attackers; }
-    const piece = probe.get(square);
-    if (!piece) return attackers;
-    const oppColor = piece.color === "w" ? "b" : "w";
+  // Casa onde a captura acontece (difere de `to` só no en passant).
+  function getCaptureSquare(mv) {
+    if (mv.flags && mv.flags.indexOf("e") !== -1) return mv.to[0] + mv.from[1];
+    return mv.to;
+  }
 
-    let board;
-    try { board = new Chess(fenToMove(fen, oppColor)); } catch (e) { return attackers; }
-    for (const mv of board.moves({ verbose: true })) {
-      if (mv.to === square) attackers.push({ square: mv.from, color: mv.color, type: mv.piece });
-    }
+  function toRawMove(mv) {
+    return { piece: mv.piece, color: mv.color, from: mv.from, to: mv.to, promotion: mv.promotion };
+  }
+  function rawKey(mv) { return mv.piece + mv.color + mv.from + mv.to + (mv.promotion || ""); }
 
-    // O rei inimigo adjacente também é um atacante — desde que haja outro
-    // atacante (ele não está sozinho contra a peça defendida) ou que capturar
-    // seja de fato legal pra ele.
+  function findKingSquare(board, color) {
     const bd = board.board();
-    let king = null;
-    const fIdx = FILES.indexOf(square[0]);
-    const rIdx = 8 - parseInt(square[1], 10);
-    for (let df = -1; df <= 1 && !king; df++) {
-      for (let dr = -1; dr <= 1; dr++) {
-        if (df === 0 && dr === 0) continue;
-        const f = Math.min(Math.max(fIdx + df, 0), 7);
-        const r = Math.min(Math.max(rIdx + dr, 0), 7);
-        const p = bd[r][f];
-        if (p && p.color === oppColor && p.type === "k") { king = sqFromRC(r, f); break; }
-      }
-    }
-    if (!king) return attackers;
-
-    let kingCaptureLegal = false;
-    try {
-      const kb = new Chess(fenToMove(fen, oppColor));
-      kingCaptureLegal = !!kb.move({ from: king, to: square });
-    } catch (e) { /* ignore */ }
-    if (attackers.length > 0 || kingCaptureLegal) {
-      attackers.push({ square: king, color: oppColor, type: "k" });
-    }
-    return attackers;
-  }
-
-  // Peças que DEFENDEM a peça em `square` (quem recaptura se ela for tomada).
-  function getDefenders(fen, square) {
-    let probe;
-    try { probe = new Chess(fen); } catch (e) { return []; }
-    const piece = probe.get(square);
-    if (!piece) return [];
-
-    const testAttacker = getAttackers(fen, square)[0];
-    if (testAttacker) {
-      let b;
-      try { b = new Chess(fenToMove(fen, testAttacker.color)); } catch (e) { return []; }
-      for (const promo of PROMOS) {
-        const res = b.move({ from: testAttacker.square, to: square, promotion: promo });
-        if (res) return getAttackers(b.fen(), square);
-      }
-      return [];
-    }
-    // Sem atacantes: coloca uma dama inimiga na casa e vê quem a ataca — esses
-    // são os defensores da peça original.
-    let b;
-    try { b = new Chess(fenToMove(fen, piece.color)); } catch (e) { return []; }
-    b.remove(square);
-    b.put({ color: piece.color === "w" ? "b" : "w", type: "q" }, square);
-    return getAttackers(b.fen(), square);
-  }
-
-  // A peça em `square` está pendurada (perde material se o oponente capturar)?
-  // `lastFen` é a posição ANTES do lance e `fen` a posição depois — usado pra
-  // distinguir trocas justas de peças realmente largadas.
-  function isPieceHanging(lastFen, fen, square) {
-    let lastBoard, board;
-    try { lastBoard = new Chess(lastFen); board = new Chess(fen); } catch (e) { return false; }
-    const lastPiece = lastBoard.get(square) || { type: "m", color: "" };
-    const piece = board.get(square);
-    if (!piece) return false;
-
-    const attackers = getAttackers(fen, square);
-    const defenders = getDefenders(fen, square);
-
-    // Acabou de ser trocada por algo de valor igual ou maior → não pendurada.
-    if (PIECE_VAL[lastPiece.type] >= PIECE_VAL[piece.type] && lastPiece.color !== piece.color) {
-      return false;
-    }
-    // Torre que tomou uma peça menor defendida por uma única outra menor: troca
-    // favorável de torre, não está pendurada.
-    if (
-      piece.type === "r" &&
-      PIECE_VAL[lastPiece.type] === 3 &&
-      attackers.length === 1 &&
-      attackers.every((a) => PIECE_VAL[a.type] === 3)
-    ) {
-      return false;
-    }
-    // Tem atacante mais barato que ela → pendurada.
-    if (attackers.some((a) => PIECE_VAL[a.type] < PIECE_VAL[piece.type])) return true;
-
-    if (attackers.length > defenders.length) {
-      let minAtk = Infinity;
-      for (const a of attackers) minAtk = Math.min(minAtk, PIECE_VAL[a.type]);
-      // Se tomar a peça (mesmo com mais atacantes que defensores) já seria um
-      // sacrifício do próprio oponente, não está pendurada.
-      if (PIECE_VAL[piece.type] < minAtk && defenders.some((d) => PIECE_VAL[d.type] < minAtk)) {
-        return false;
-      }
-      // Se algum defensor é peão, o "sacrificado" de fato é esse peão.
-      if (defenders.some((d) => PIECE_VAL[d.type] === 1)) return false;
-      return true;
-    }
-    return false;
-  }
-
-  // Detecta "Lance Brilhante" no estilo chess.com: o lance é o melhor (ou quase)
-  // E deixa de propósito uma peça de valor pendurada, que o oponente pode
-  // realmente capturar, sem que o jogador fique pior nem já estivesse ganhando à
-  // toa. Recebe um `move` já enriquecido (fen_before/after, evals POV de quem
-  // moveu, second_best). Retorna boolean.
-  function detectBrilliant(move) {
-    const mover = move.color === "white" ? "w" : "b";
-    const evalAfter = move.eval_after_cp;
-    const secondCp = move.second_best_eval_cp;
-    const afterMate = isMateCp(evalAfter);
-    const secondMate = secondCp != null && isMateCp(secondCp);
-
-    // "Ganhava de qualquer jeito": já existe um 2º lance que também ganha fácil
-    // (≥ +7) ou ambos os top lances dão mate → o sacrifício não era necessário.
-    if ((secondCp != null && secondCp >= 700 && !afterMate) || (afterMate && secondMate)) return false;
-    if (evalAfter < 0) return false;            // não pode ficar pior depois
-    if (/=/.test(move.san)) return false;       // promoção não conta como sacrifício
-
-    let lastBoard, curBoard;
-    try { lastBoard = new Chess(move.fen_before); curBoard = new Chess(move.fen_after); }
-    catch (e) { return false; }
-    if (lastBoard.in_check()) return false;     // estava em xeque → lance é "obrigatório"
-
-    const toSq = move.uci.slice(2, 4);
-    const captured = lastBoard.get(toSq) || { type: "m" };
-
-    // Peças do jogador (não peão/rei) que ficaram penduradas após o lance.
-    const sacrificed = [];
-    const bd = curBoard.board();
     for (let r = 0; r < 8; r++) {
       for (let f = 0; f < 8; f++) {
         const p = bd[r][f];
-        if (!p || p.color !== mover || p.type === "k" || p.type === "p") continue;
-        // Se o que foi capturado vale igual/mais que essa peça, a "troca boa" tá
-        // em outro lugar — essa peça não é o sacrifício.
-        if (PIECE_VAL[captured.type] >= PIECE_VAL[p.type]) continue;
-        const sq = sqFromRC(r, f);
-        if (isPieceHanging(move.fen_before, move.fen_after, sq)) {
-          sacrificed.push({ square: sq, type: p.type });
-        }
+        if (p && p.type === "k" && p.color === color) return sqFromRC(r, f);
       }
     }
-    if (sacrificed.length === 0) return false;
+    return null;
+  }
 
-    // Confirma que o sacrifício é REAL: o oponente precisa conseguir capturar a
-    // peça de forma viável (sem que isso, por sua vez, pendure uma peça dele de
-    // valor ≥ ao sacrificado, ou — pra peças < torre — permita mate em 1).
-    const maxSac = Math.max(...sacrificed.map((s) => PIECE_VAL[s.type]));
-    for (const sac of sacrificed) {
-      for (const atk of getAttackers(move.fen_after, sac.square)) {
-        for (const promo of PROMOS) {
-          let test;
-          try { test = new Chess(move.fen_after); } catch (e) { continue; }
-          if (!test.move({ from: atk.square, to: sac.square, promotion: promo })) continue;
-          // O atacante fica "preso" (capturar penduraria uma peça do oponente
-          // de valor ≥ ao sacrificado)?
-          let attackerPinned = false;
-          const tb = test.board();
-          for (let r = 0; r < 8 && !attackerPinned; r++) {
-            for (let f = 0; f < 8; f++) {
-              const ep = tb[r][f];
-              if (!ep || ep.color === test.turn() || ep.type === "k" || ep.type === "p") continue;
-              const esq = sqFromRC(r, f);
-              if (PIECE_VAL[ep.type] >= maxSac && isPieceHanging(move.fen_after, test.fen(), esq)) {
-                attackerPinned = true; break;
-              }
-            }
-          }
-          if (PIECE_VAL[sac.type] >= 5) {
-            if (!attackerPinned) return true;
-          } else if (!attackerPinned && !test.moves().some((mv) => mv.endsWith("#"))) {
-            return true;
-          }
-        }
+  function isAdjacent(a, b) {
+    return a !== b &&
+      Math.abs(FILES.indexOf(a[0]) - FILES.indexOf(b[0])) <= 1 &&
+      Math.abs(+a[1] - +b[1]) <= 1;
+  }
+
+  // Replay do lance jogado, devolvendo o move VERBOSE do chess.js (captured,
+  // flags, promotion...) ou null.
+  function replayMove(move) {
+    try {
+      const c = new Chess(move.fen_before);
+      return c.move({
+        from: move.uci.slice(0, 2),
+        to: move.uci.slice(2, 4),
+        promotion: move.uci.slice(4) || undefined,
+      }) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Lances que CAPTURAM a peça em `piece.square` (diretos, sem baterias).
+  // Inclui o rei inimigo adjacente mesmo quando a captura seria ilegal (peça
+  // defendida) — equivalente ao `.attackers()` do chess.js moderno.
+  function directAttackingMoves(fen, piece) {
+    const oppColor = piece.color === "w" ? "b" : "w";
+    let b;
+    try { b = new Chess(fenToMove(fen, oppColor)); } catch (e) { return []; }
+    const attacks = [];
+    for (const mv of b.moves({ verbose: true })) {
+      if (getCaptureSquare(mv) === piece.square) attacks.push(toRawMove(mv));
+    }
+    if (!attacks.some((a) => a.piece === "k")) {
+      const kingSq = findKingSquare(b, oppColor);
+      if (kingSq && isAdjacent(kingSq, piece.square)) {
+        attacks.push({ piece: "k", color: oppColor, from: kingSq, to: piece.square });
       }
     }
+    return attacks;
+  }
+
+  // Todos os lances que atacam a peça, expandindo BATERIAS (ataques por raio-X:
+  // remove a peça da frente da bateria e vê que atacantes são revelados).
+  function getAttackingMoves(fen, piece, transitive = true) {
+    const attacks = directAttackingMoves(fen, piece);
+    if (!transitive) return attacks;
+
+    const frontier = attacks.map((a) => ({ directFen: fen, square: a.from, type: a.piece }));
+    let guard = 0; // trava de segurança contra expansão patológica
+    while (frontier.length > 0 && guard++ < 64) {
+      const front = frontier.pop();
+      if (front.type === "k") continue; // rei não pode estar na frente de bateria
+
+      let tb;
+      try { tb = new Chess(front.directFen); } catch (e) { continue; }
+      const oldAttacks = directAttackingMoves(front.directFen, piece)
+        .filter((a) => a.from !== front.square);
+      tb.remove(front.square);
+      const newFen = tb.fen();
+      const newAttacks = directAttackingMoves(newFen, piece);
+
+      // XOR: revelados = os que só existem numa das duas listas.
+      const oldKeys = new Set(oldAttacks.map(rawKey));
+      const newKeys = new Set(newAttacks.map(rawKey));
+      const revealed = oldAttacks.filter((a) => !newKeys.has(rawKey(a)))
+        .concat(newAttacks.filter((a) => !oldKeys.has(rawKey(a))));
+
+      for (const a of revealed) {
+        attacks.push(a);
+        frontier.push({ directFen: newFen, square: a.from, type: a.piece });
+      }
+    }
+    return attacks;
+  }
+
+  // Quem recaptura se a peça for tomada: simula cada atacante capturando e
+  // conta os atacantes do capturador; devolve o MENOR conjunto. Sem atacantes,
+  // inverte a cor da peça e conta quem mira a casa.
+  function getDefendingMoves(fen, piece, transitive = true) {
+    const attacking = getAttackingMoves(fen, piece, false);
+    let smallest = null;
+    for (const atk of attacking) {
+      let cb;
+      try { cb = new Chess(fenToMove(fen, atk.color)); } catch (e) { continue; }
+      if (!cb.move({ from: atk.from, to: atk.to, promotion: atk.promotion })) continue;
+      const recap = getAttackingMoves(
+        cb.fen(), { type: atk.piece, color: atk.color, square: atk.to }, transitive
+      );
+      if (!smallest || recap.length < smallest.length) smallest = recap;
+    }
+    if (smallest) return smallest;
+
+    let db;
+    try { db = new Chess(fen); } catch (e) { return []; }
+    const flippedColor = piece.color === "w" ? "b" : "w";
+    db.remove(piece.square);
+    if (!db.put({ type: piece.type, color: flippedColor }, piece.square)) return [];
+    return getAttackingMoves(
+      db.fen(), { type: piece.type, color: flippedColor, square: piece.square }, transitive
+    );
+  }
+
+  // A peça está segura? (heurística de trocas do wintrchess)
+  function isPieceSafe(fen, piece, playedMove) {
+    const direct = directAttackingMoves(fen, piece);
+    const attackers = getAttackingMoves(fen, piece);
+    const defenders = getDefendingMoves(fen, piece);
+
+    // Sacrifício "decimal" favorável (torre por peça menor defendida por outra
+    // menor etc.) é seguro.
+    if (
+      playedMove && playedMove.captured &&
+      piece.type === "r" &&
+      PIECE_VAL[playedMove.captured] === 3 &&
+      attackers.length === 1 &&
+      defenders.length > 0 &&
+      PIECE_VAL[attackers[0].piece] === 3
+    ) return true;
+
+    // Atacante direto mais barato que a peça => insegura.
+    if (direct.some((a) => PIECE_VAL[a.piece] < PIECE_VAL[piece.type])) return false;
+
+    // Não tem mais atacantes que defensores => segura.
+    if (attackers.length <= defenders.length) return true;
+
+    // Mais barata que qualquer atacante direto e com defensor mais barato que
+    // todos os atacantes diretos => capturar seria sacrifício do oponente.
+    let lowest = null;
+    for (const a of direct) if (!lowest || PIECE_VAL[a.piece] < PIECE_VAL[lowest.piece]) lowest = a;
+    if (!lowest) return true;
+    if (
+      PIECE_VAL[piece.type] < PIECE_VAL[lowest.piece] &&
+      defenders.some((d) => PIECE_VAL[d.piece] < PIECE_VAL[lowest.piece])
+    ) return true;
+
+    // Defendida por peão, a esta altura, é segura.
+    if (defenders.some((d) => d.piece === "p")) return true;
+
     return false;
+  }
+
+  // Peças (não peão/rei) de `color` que NÃO estão seguras. `playedMove` (o
+  // lance verbose que acabou de ser jogado) desconta o material capturado:
+  // peça de valor <= ao capturado não conta como sacrifício.
+  function getUnsafePieces(fen, color, playedMove) {
+    let board;
+    try { board = new Chess(fen); } catch (e) { return []; }
+    const capturedVal = playedMove && playedMove.captured ? PIECE_VAL[playedMove.captured] : 0;
+    const out = [];
+    const bd = board.board();
+    for (let r = 0; r < 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        const p = bd[r][f];
+        if (!p || p.color !== color || p.type === "p" || p.type === "k") continue;
+        if (PIECE_VAL[p.type] <= capturedVal) continue;
+        const piece = { type: p.type, color: p.color, square: sqFromRC(r, f) };
+        if (!isPieceSafe(fen, piece, playedMove)) out.push(piece);
+      }
+    }
+    return out;
+  }
+
+  // Ataques (diretos) a peças INSEGURAS de `color` com valor >= ao da peça
+  // ameaçada — a "moeda de troca" que justifica deixar a ameaça no ar.
+  function relativeUnsafePieceAttacks(fen, threatened, color, playedMove) {
+    const out = [];
+    for (const u of getUnsafePieces(fen, color, playedMove)) {
+      if (u.square === threatened.square) continue;
+      if (PIECE_VAL[u.type] < PIECE_VAL[threatened.type]) continue;
+      out.push(...directAttackingMoves(fen, u));
+    }
+    return out;
+  }
+
+  // Sacrifício menor que, se aceito, permite mate em 1 => ameaça "protegida".
+  function lowValueCheckmatePin(board, threatened) {
+    return PIECE_VAL[threatened.type] < PIECE_VAL.q &&
+      board.moves().some((m) => m.indexOf("#") !== -1);
+  }
+
+  // Jogar `actingMove` (ex.: capturar a peça ameaçada, ou fugir com ela) CRIA
+  // uma contra-ameaça nova de valor >= ao da peça ameaçada?
+  function moveCreatesGreaterThreat(fen, threatened, actingMove) {
+    const before = relativeUnsafePieceAttacks(fen, threatened, actingMove.color);
+    let board;
+    try { board = new Chess(fen); } catch (e) { return false; }
+    const baked = board.move({ from: actingMove.from, to: actingMove.to, promotion: actingMove.promotion });
+    if (!baked) return false;
+    const after = relativeUnsafePieceAttacks(board.fen(), threatened, actingMove.color, baked);
+    const beforeKeys = new Set(before.map(rawKey));
+    if (after.some((a) => !beforeKeys.has(rawKey(a)))) return true;
+    return lowValueCheckmatePin(board, threatened);
+  }
+
+  // Depois de `actingMove`, SOBRA alguma contra-ameaça de valor >= (nova ou não)?
+  function moveLeavesGreaterThreat(fen, threatened, actingMove) {
+    let board;
+    try { board = new Chess(fen); } catch (e) { return false; }
+    if (!board.move({ from: actingMove.from, to: actingMove.to, promotion: actingMove.promotion })) return false;
+    if (relativeUnsafePieceAttacks(board.fen(), threatened, actingMove.color).length > 0) return true;
+    return lowValueCheckmatePin(board, threatened);
+  }
+
+  // Todas as reações à ameaça deixam/criam contra-ameaça maior?
+  function hasDangerLevels(fen, threatened, actingMoves, strategy = "leaves") {
+    return actingMoves.every((mv) => (strategy === "creates"
+      ? moveCreatesGreaterThreat(fen, threatened, mv)
+      : moveLeavesGreaterThreat(fen, threatened, mv)));
+  }
+
+  // Peça presa: insegura onde está E em toda casa pra onde pode ir (ou fugir
+  // permite contra-ameaça maior do oponente).
+  function isPieceTrapped(fen, piece) {
+    const calibrated = fenToMove(fen, piece.color);
+    let cb;
+    try { cb = new Chess(calibrated); } catch (e) { return false; }
+    const calibratedFen = cb.fen();
+    const standingSafe = isPieceSafe(calibratedFen, piece);
+    const escapes = cb.moves({ square: piece.square, verbose: true });
+    const allUnsafe = escapes.every((mv) => {
+      if (moveCreatesGreaterThreat(calibratedFen, piece, toRawMove(mv))) return true;
+      let eb;
+      try { eb = new Chess(calibratedFen); } catch (e) { return false; }
+      const em = eb.move({ from: mv.from, to: mv.to, promotion: mv.promotion });
+      if (!em) return false;
+      return !isPieceSafe(eb.fen(), { type: piece.type, color: piece.color, square: em.to }, em);
+    });
+    return !standingSafe && allUnsafe;
+  }
+
+  // Pré-condição de Great/Brilliant (isMoveCriticalCandidate do wintrchess):
+  // lances fáceis de achar ou obrigatórios não podem ser críticos.
+  function isMoveCriticalCandidate(move) {
+    // Ganhava de qualquer jeito: o 2º melhor lance já era completamente ganho.
+    const second = move.second_best_eval_cp;
+    if (second != null) {
+      if (!isMateCp(second) && second >= 700) return false;
+    } else if (!isMateCp(move.eval_after_cp) && move.eval_after_cp >= 700) {
+      return false;
+    }
+    // Lances em posição perdida não podem ser críticos.
+    if (move.eval_after_cp < 0) return false;
+    // Promoção a dama não conta.
+    if ((move.uci || "").length > 4 && move.uci[4] === "q") return false;
+    // Estava em xeque => lance "obrigatório".
+    let before;
+    try { before = new Chess(move.fen_before); } catch (e) { return false; }
+    if (before.in_check()) return false;
+    return true;
+  }
+
+  // "Ótimo Lance" (Great / critical no wintrchess): o melhor lance foi jogado
+  // num momento em que o 2º melhor já jogava fora >= 10% de expected points —
+  // isto é, só havia UMA jogada à altura.
+  function considerCritical(move) {
+    if (!isMoveCriticalCandidate(move)) return false;
+    // Achar lances quando você TEM mate forçado não é crítico.
+    if (isMateCp(move.eval_after_cp) && move.eval_after_cp > 0) return false;
+
+    const played = replayMove(move);
+    if (!played) return false;
+    // Capturar material de graça não é crítico.
+    if (played.captured) {
+      const capSq = getCaptureSquare(played);
+      const capPiece = {
+        type: played.captured,
+        color: played.color === "w" ? "b" : "w",
+        square: capSq,
+      };
+      if (!isPieceSafe(move.fen_before, capPiece)) return false;
+    }
+
+    if (move.second_best_eval_cp == null) return false;
+    return expectedPointsLoss(move.best_eval_cp, move.second_best_eval_cp) >= 0.1;
+  }
+
+  // "Lance Brilhante": sacrifício real — o lance deixa (de propósito) peça de
+  // valor insegura, sem contra-ameaça equivalente que "proteja" o sacrifício e
+  // sem ser só o caso de uma peça que já estava presa de qualquer jeito.
+  function considerBrilliant(move) {
+    if (!isMoveCriticalCandidate(move)) return false;
+
+    const played = replayMove(move);
+    if (!played) return false;
+    if (played.promotion) return false; // promoção não pode ser brilhante
+
+    const mover = played.color;
+    const prevUnsafe = getUnsafePieces(move.fen_before, mover);
+    const unsafe = getUnsafePieces(move.fen_after, mover, played);
+
+    let curBoard;
+    try { curBoard = new Chess(move.fen_after); } catch (e) { return false; }
+    // Mover peça pra SEGURANÇA (menos peças inseguras que antes) não é sac.
+    if (!curBoard.in_check() && unsafe.length < prevUnsafe.length) return false;
+
+    // Toda peça insegura tem contra-ameaça >= se for capturada => não é sac.
+    const allProtected = unsafe.every((u) =>
+      hasDangerLevels(move.fen_after, u, directAttackingMoves(move.fen_after, u))
+    );
+    if (allProtected) return false;
+
+    const prevTrapped = prevUnsafe.filter((u) => isPieceTrapped(move.fen_before, u));
+    const trapped = unsafe.filter((u) => isPieceTrapped(move.fen_after, u));
+    const movedWasTrapped = prevTrapped.some((t) => t.square === move.uci.slice(0, 2));
+
+    // Peça que já estava presa (ou continua presa) não é sacrifício genuíno.
+    if (
+      trapped.length === unsafe.length ||
+      movedWasTrapped ||
+      trapped.length < prevTrapped.length
+    ) return false;
+
+    return unsafe.length > 0;
   }
 
   // ===== Classificação =====
   //
-  // Modelo do chess.com (pesquisado a partir do "Expected Points Model" oficial e
-  // da implementação de referência WintrCat/freechess): o lance é classificado
-  // pela QUEDA de probabilidade de vitória entre a melhor jogada da posição e a
-  // jogada efetivamente feita, ambas do ponto de vista de quem moveu. Os limiares
-  // (em pontos de win-prob 0..1) são exatamente os publicados pelo chess.com:
+  // Modelo do chess.com via wintrchess (WintrCat), a réplica aberta mais fiel
+  // do Game Review: o lance é classificado pela QUEDA de "expected points"
+  // (prob. de vitória, sigmóide com gradiente 0.0035/cp) entre a melhor jogada
+  // da posição e a jogada feita, ambas do ponto de vista de quem moveu:
   //
-  //   Best 0 · Excellent ≤0.02 · Good ≤0.05 · Inaccuracy ≤0.10 · Mistake ≤0.20 ·
-  //   Blunder >0.20
+  //   Best <0.01 · Excellent <0.045 · Good <0.08 · Inaccuracy <0.12 ·
+  //   Mistake <0.22 · Blunder >=0.22
   //
-  // Sobre isso vêm as classificações "especiais" (Brilliant, Great, Book, Forced,
-  // Miss) e as transições envolvendo MATE, que não podem ser medidas só por
-  // win-prob (mate em 5 e mate em 1 têm ambos ~100% — mas largar um mate forçado
-  // é um erro grave, não um lance "excelente").
+  // (O help center do chess.com publica 0.02/0.05/0.10/0.20 arredondados; as
+  // bandas do wintrchess foram calibradas contra o Game Review real.) Um lance
+  // pode ser "Best" mesmo sem ser o nº 1 do engine, se a perda é ~zero — igual
+  // ao chess.com. Sobre isso vêm as especiais (Brilliant, Great, Book, Forced,
+  // Miss) e as transições envolvendo MATE, que têm tabelas próprias (mate em 5
+  // e mate em 1 têm ambos ~100% de win-prob — mas largar mate forçado é erro).
 
-  const THRESHOLDS = {
-    excellent: 0.02,
-    good:      0.05,
-    inaccuracy:0.10,
-    mistake:   0.20,
-  };
-
-  // Limites (em cp, POV de quem moveu) acima/abaixo dos quais a posição é
-  // considerada "completamente ganha" / "completamente perdida". Usados nas
-  // guardas de leniência do chess.com (não é capivarada se você já estava
-  // ganhando de lavada, nem se já estava perdido de lavada).
-  const WINNING_CP = 600;
+  const EP_GRADIENT = 0.0035;
 
   const MATE_CP_THRESHOLD = MATE_SCORE_CP - 1000; // 9000
 
@@ -409,120 +538,95 @@
     return (cp >= 0 ? 1 : -1) * n;
   }
 
-  function classifyMove(move, prevMove) {
-    if (move.in_book) return "book";
-    if (move.is_only_move) return "forced";
+  // Expected points (0..1) de um eval em cp, POV de quem move.
+  function expectedPointsFromCp(cp) {
+    if (isMateCp(cp)) return cp > 0 ? 1 : 0;
+    return 1 / (1 + Math.exp(-EP_GRADIENT * cp));
+  }
 
+  function expectedPointsLoss(beforeCp, afterCp) {
+    return Math.max(0, expectedPointsFromCp(beforeCp) - expectedPointsFromCp(afterCp));
+  }
+
+  // Classificação pela perda de expected points, com as quatro combinações de
+  // tipo de eval (cp/mate) — port fiel do pointLossClassify do wintrchess.
+  function pointLossClassify(move) {
     const prevEval = move.best_eval_cp;     // melhor avaliação ANTES (POV do jogador)
     const evalAfter = move.eval_after_cp;   // avaliação DEPOIS (POV do jogador)
     const prevMate = isMateCp(prevEval);
     const afterMate = isMateCp(evalAfter);
-    const noMate = !prevMate && !afterMate;
 
-    const loss = cpToWinrate(prevEval) - cpToWinrate(evalAfter);
-    const isBest = !!move.best_move_san && move.san === move.best_move_san;
-
-    let cls;
-    if (isBest) {
-      cls = "best";
-    } else if (noMate) {
-      // Caminho comum: queda de win-prob contra os limiares do chess.com.
-      if (loss <= THRESHOLDS.excellent) cls = "excellent";
-      else if (loss <= THRESHOLDS.good) cls = "good";
-      else if (loss <= THRESHOLDS.inaccuracy) cls = "inaccuracy";
-      else if (loss <= THRESHOLDS.mistake) cls = "mistake";
-      else cls = "blunder";
-    } else if (!prevMate && afterMate) {
-      // Não havia mate; agora há. Se VOCÊ passou a ter mate forçado, é o melhor
-      // que existia; se você PERMITIU mate, a gravidade depende de quão próximo.
-      const aev = mateSigned(evalAfter);
-      if (aev > 0) cls = "best";
-      else if (aev >= -2) cls = "blunder";      // levou mate em 1–2
-      else if (aev >= -5) cls = "mistake";      // mate em 3–5
-      else cls = "inaccuracy";                  // mate distante (6+)
-    } else if (prevMate && !afterMate) {
-      // Você tinha mate forçado (ou estava sendo mateado) e o lance dissolveu o
-      // mate. Largar um mate ganho é erro proporcional ao que sobrou no placar.
-      const paev = mateSigned(prevEval);
-      if (paev < 0 && evalAfter < 0) cls = "best";   // estava sendo mateado e segue pior: defesa correta
-      else if (evalAfter >= 400) cls = "good";       // largou o mate mas segue ganhando fácil
-      else if (evalAfter >= 150) cls = "inaccuracy";
-      else if (evalAfter >= -100) cls = "mistake";
-      else cls = "blunder";                          // tinha mate, agora está perdendo
-    } else {
-      // Mate dos dois lados (antes e depois).
-      const paev = mateSigned(prevEval);
-      const aev = mateSigned(evalAfter);
-      if (paev > 0) {                 // você tinha o mate
-        if (aev <= -4) cls = "mistake";
-        else if (aev < 0) cls = "blunder";          // transformou seu mate em levar mate
-        else if (aev < paev) cls = "best";          // mate ainda mais rápido
-        else if (aev <= paev + 2) cls = "excellent";
-        else cls = "good";
-      } else {                        // você estava sendo mateado
-        cls = (aev === paev) ? "best" : "good";
-      }
+    // Mate antes e depois.
+    if (prevMate && afterMate) {
+      const prevM = mateSigned(prevEval);
+      const curM = mateSigned(evalAfter);
+      // Tinha mate e agora LEVA mate.
+      if (prevM > 0 && curM < 0) return curM < -3 ? "mistake" : "blunder";
+      // Quem dá mate espera "perder" 1 de distância por lance (-1 = best); pra
+      // quem leva mate, manter a distância é o melhor que há.
+      const mateLoss = curM - prevM;
+      if (mateLoss < 0 || (mateLoss === 0 && curM < 0)) return "best";
+      if (mateLoss < 2) return "excellent";
+      if (mateLoss < 7) return "good";
+      return "inaccuracy";
     }
 
-    // ---- Upgrades a partir de "Melhor Lance": Brilhante e Ótimo. ----
-    if (cls === "best") {
-      if (detectBrilliant(move)) cls = "brilliant";
-      else if (noMate && isGreat(move, prevMove)) cls = "great";
+    // Tinha mate forçado e o lance dissolveu — gravidade pelo que sobrou.
+    if (prevMate && !afterMate) {
+      if (evalAfter >= 800) return "excellent";
+      if (evalAfter >= 400) return "good";
+      if (evalAfter >= 200) return "inaccuracy";
+      if (evalAfter >= 0) return "mistake";
+      return "blunder";
     }
+
+    // Não havia mate; agora há. Seu => o melhor que existia; contra você =>
+    // gravidade pela proximidade do mate.
+    if (!prevMate && afterMate) {
+      const curM = mateSigned(evalAfter);
+      if (curM > 0) return "best";
+      if (curM >= -2) return "blunder";
+      if (curM >= -5) return "mistake";
+      return "inaccuracy";
+    }
+
+    // Caminho comum (cp -> cp): bandas de expected points.
+    const loss = expectedPointsLoss(prevEval, evalAfter);
+    if (loss < 0.01) return "best";
+    if (loss < 0.045) return "excellent";
+    if (loss < 0.08) return "good";
+    if (loss < 0.12) return "inaccuracy";
+    if (loss < 0.22) return "mistake";
+    return "blunder";
+  }
+
+  function classifyMove(move, prevMove) { // prevMove mantido por compat de API
+    if (move.in_book) return "book";
+    if (move.is_only_move) return "forced";
+    if (move.is_checkmate) return "best"; // deu mate: melhor por definição
+
+    const topMovePlayed = !!move.best_move_san && move.san === move.best_move_san;
+    let cls = topMovePlayed ? "best" : pointLossClassify(move);
+
+    // Great: momento crítico em que SÓ o melhor lance segurava a posição.
+    if (topMovePlayed && considerCritical(move)) cls = "great";
+
+    // Brilliant: sacrifício real (peça de valor deixada insegura de propósito).
+    if ((cls === "best" || cls === "great") && considerBrilliant(move)) cls = "brilliant";
 
     // ---- Miss: tinha um GANHO claro nas mãos e deixou escapar. ----
     // O chess.com mostra "Oportunidade Perdida" quando você estava ganhando (ou
     // tinha mate) e, em vez de converter, o lance leva a posição de volta pra
     // igualdade ou pior. Sobrepõe os tons negativos (inaccuracy/mistake/blunder).
-    const hadWin = prevMate ? prevEval > 0 : prevEval >= 300;
-    const keptWin = afterMate ? evalAfter > 0 : evalAfter >= 100;
-    if (!isBest && hadWin && !keptWin && loss > THRESHOLDS.good &&
-        (cls === "inaccuracy" || cls === "mistake" || cls === "blunder")) {
-      cls = "miss";
-    }
-
-    // ---- Guardas de leniência do chess.com (só sobre "capivarada"). ----
-    if (cls === "blunder") {
-      // Ainda completamente ganho após o lance → no máximo "bom".
-      if (!afterMate && evalAfter >= WINNING_CP) cls = "good";
-      // Já estava completamente perdido antes → não foi ESSE lance que perdeu.
-      else if (noMate && prevEval <= -WINNING_CP) cls = "good";
+    if (cls === "inaccuracy" || cls === "mistake" || cls === "blunder") {
+      const prevMate = isMateCp(move.best_eval_cp);
+      const afterMate = isMateCp(move.eval_after_cp);
+      const hadWin = prevMate ? move.best_eval_cp > 0 : move.best_eval_cp >= 300;
+      const keptWin = afterMate ? move.eval_after_cp > 0 : move.eval_after_cp >= 100;
+      if (hadWin && !keptWin) cls = "miss";
     }
 
     return cls;
-  }
-
-  // "Ótimo Lance" (Great) = momento crítico em que havia UMA só jogada à altura.
-  // No chess.com isso aparece quando você pune um deslize do oponente ou acha a
-  // única continuação que segura/ganha a posição. Critério (sem mate envolvido):
-  // folga grande pro 2º melhor lance, a peça movida não fica pendurada, e não é
-  // uma recaptura óbvia. Aceita uma folga menor quando o oponente acabou de errar.
-  function isGreat(move, prevMove) {
-    if (move.second_best_eval_cp == null) return false;
-    if (isMateCp(move.best_eval_cp) || isMateCp(move.second_best_eval_cp)) return false;
-
-    const gap = move.best_eval_cp - move.second_best_eval_cp;
-    const toSq = move.uci.slice(2, 4);
-    let movedHanging = false;
-    try { movedHanging = isPieceHanging(move.fen_before, move.fen_after, toSq); } catch (e) {}
-    if (movedHanging) return false;
-
-    const oppErred = !!prevMove &&
-      (prevMove.classification === "blunder" || prevMove.classification === "mistake" ||
-       prevMove.classification === "miss");
-
-    // Puniu o erro do oponente com a resposta claramente melhor.
-    if (oppErred && gap >= 150) { move._opp_erred = true; return true; }
-
-    // Única jogada boa num momento ainda em disputa (posição não decidida).
-    if (Math.abs(move.best_eval_cp) <= WINNING_CP && gap >= 250) {
-      // Recaptura óbvia na mesma casa não é "ótimo".
-      if (prevMove && prevMove.is_capture && prevMove.to === move.to) return false;
-      // Captura que não arrisca material: a folga só reflete "tem que recapturar".
-      if (move.is_capture && move.net_material != null && move.net_material >= -0.5) return false;
-      return true;
-    }
-    return false;
   }
 
   // ===== Comentários por lance =====
@@ -744,13 +848,6 @@
     }
     if (cls === "great") {
       if (playerHasMate) return `${san} é o lance da posição: conduz ao mate forçado em ${mateDist}.`;
-      const oppErred = move._opp_erred;
-      if (oppErred) {
-        return pick([
-          `${san} é ótimo! Pune o deslize do adversário e era a resposta certa.`,
-          `${san} é o lance preciso pra aproveitar a chance que apareceu.`,
-        ]);
-      }
       return pick([
         `${san} é ótimo — era praticamente a única jogada que segura a posição.`,
         `${san} é o lance da posição: qualquer outro estragava tudo.`,

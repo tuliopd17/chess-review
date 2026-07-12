@@ -49,7 +49,8 @@
   // Acurácia de UM lance (fórmula do Lichess), dadas as win% (0..100) ANTES
   // (melhor jogada possível na posição) e DEPOIS (lance efetivamente jogado),
   // ambas do ponto de vista de quem moveu. O "+1" é o bônus de incerteza que o
-  // Lichess aplica (análise imperfeita).
+  // Lichess aplica (análise imperfeita). Mantida só por compat da API exportada;
+  // a acurácia da partida usa o modelo wintrchess (computeGameAccuracies).
   function moveAccuracy(winBefore, winAfter) {
     if (winAfter >= winBefore) return 100;
     const winDiff = winBefore - winAfter;
@@ -66,82 +67,55 @@
     return moveAccuracy(before, after);
   }
 
-  function _stdDev(xs) {
-    const n = xs.length;
-    if (n === 0) return 0;
-    const mean = xs.reduce((a, b) => a + b, 0) / n;
-    const v = xs.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n;
-    return Math.sqrt(v);
-  }
-
-  function _clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
-
   /**
-   * Acurácia da partida por cor, no método do Lichess (que aproxima de perto o
-   * chess.com): para cada cor, a acurácia é a MÉDIA entre
-   *   - a média harmônica das acurácias dos lances (pune outliers: uma capivarada
-   *     derruba a nota), e
-   *   - a média ponderada pela VOLATILIDADE (lances em posições mais "afiadas"
-   *     pesam mais; peso = desvio-padrão das win% numa janela deslizante).
-   * Bem mais fiel que a média aritmética simples.
+   * Acurácia da partida por cor, no método do wintrchess (que replica o número
+   * que o chess.com mostra): acurácia por lance a partir da perda de expected
+   * points do MESMO modelo usado na classificação (sigmóide 0.0035/cp), e a
+   * acurácia da partida é a média aritmética simples por cor — o chess.com não
+   * usa média harmônica nem ponderação por volatilidade (isso é o Lichess, que
+   * pune capivaradas bem mais).
    */
   function computeGameAccuracies(collected) {
-    const N = collected.length;
     const out = { white: 0, black: 0 };
-    if (N === 0) return out;
-
-    // Série de win% do ponto de vista das BRANCAS, uma por posição (N+1).
-    const first = collected[0];
-    const initWhiteCp = first.color === "white" ? first.best_eval_cp : -first.best_eval_cp;
-    const winWhite = [cpToWinPercent(initWhiteCp)];
+    const per = { white: [], black: [] };
     for (const m of collected) {
-      const whiteCp = m.color === "white" ? m.eval_after_cp : -m.eval_after_cp;
-      winWhite.push(cpToWinPercent(whiteCp));
+      const loss = expectedPointsLoss(m.best_eval_cp, m.eval_after_cp);
+      const acc = Math.max(0, Math.min(100, 103.16 * Math.exp(-4 * loss) - 3.17));
+      if (per[m.color]) per[m.color].push(acc);
     }
-
-    // Acurácia de cada lance (POV de quem moveu).
-    const perMove = collected.map((m) =>
-      moveAccuracy(cpToWinPercent(m.best_eval_cp), cpToWinPercent(m.eval_after_cp))
-    );
-
-    // Pesos por volatilidade (janelas deslizantes das win%, igual ao Lichess).
-    const windowSize = _clamp(Math.floor((N + 1) / 10), 2, 8);
-    const windows = [];
-    const firstWindow = winWhite.slice(0, windowSize);
-    const padCount = Math.min(windowSize, winWhite.length) - 2;
-    for (let i = 0; i < padCount; i++) windows.push(firstWindow);
-    for (let i = 0; i + windowSize <= winWhite.length; i++) {
-      windows.push(winWhite.slice(i, i + windowSize));
-    }
-    const weights = windows.map((w) => _clamp(_stdDev(w), 0.5, 12));
-
     for (const color of ["white", "black"]) {
-      const accs = [];
-      const ws = [];
-      for (let i = 0; i < N; i++) {
-        if (collected[i].color === color) {
-          accs.push(perMove[i]);
-          ws.push(weights[i] != null ? weights[i] : 1);
-        }
-      }
-      if (accs.length === 0) { out[color] = 0; continue; }
-      const wSum = ws.reduce((a, b) => a + b, 0) || 1;
-      const weightedMean = accs.reduce((a, acc, i) => a + acc * ws[i], 0) / wSum;
-      const harmonicMean = accs.length /
-        accs.reduce((a, acc) => a + 1 / Math.max(acc, 0.01), 0);
-      out[color] = (weightedMean + harmonicMean) / 2;
+      const a = per[color];
+      out[color] = a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
     }
     return out;
   }
 
-  function estimateElo(accuracy) {
+  /**
+   * ELO estimado da performance na partida. O chess.com não publica a fórmula
+   * (o help diz: qualidade dos lances + rating real dos dois jogadores), então
+   * usamos o fit empírico da comunidade pra rapid — ~92.6 Elo por ponto de
+   * acurácia na faixa 1600–2400, aproximado por rating ≈ (acurácia − 64) × 100
+   * pra acurácia >= 80 — e, quando o PGN traz os ratings reais (WhiteElo /
+   * BlackElo), ancoramos a estimativa neles como o chess.com faz.
+   */
+  function estimateElo(accuracy, anchorElo) {
     let elo;
-    if (accuracy < 50) elo = 400 + (accuracy / 50) * 200;
-    else if (accuracy < 70) elo = 600 + ((accuracy - 50) / 20) * 600;
-    else if (accuracy < 80) elo = 1200 + ((accuracy - 70) / 10) * 500;
-    else if (accuracy < 90) elo = 1700 + ((accuracy - 80) / 10) * 600;
-    else elo = 2300 + ((accuracy - 90) / 10) * 400;
-    return Math.round(elo);
+    if (accuracy >= 80) elo = (accuracy - 64) * 100;
+    else elo = 1600 - (80 - accuracy) * 30; // desce suave até ~100 em acc 30
+    if (anchorElo != null && isFinite(anchorElo)) elo = (elo + anchorElo) / 2;
+    return Math.round(Math.max(100, Math.min(3200, elo)));
+  }
+
+  // Âncora de rating a partir dos headers do PGN: média de WhiteElo/BlackElo
+  // (ignora "?" e valores não numéricos). null quando não há rating algum.
+  function ratingAnchorFromHeaders(headers) {
+    const vals = [];
+    for (const k of ["WhiteElo", "BlackElo"]) {
+      const n = parseInt(headers && headers[k], 10);
+      if (isFinite(n) && n > 0) vals.push(n);
+    }
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
   }
 
   // ===== Segurança de peças / sacrifício (port do WintrCat/wintrchess) =====
@@ -1083,19 +1057,21 @@
     for (const m of collected) {
       counts[m.color][m.classification] = (counts[m.color][m.classification] || 0) + 1;
     }
-    // Acurácia da partida pelo método do Lichess (≈ chess.com): média entre
-    // média harmônica e média ponderada por volatilidade.
+    // Acurácia da partida pelo método do wintrchess (replica o chess.com):
+    // média simples das acurácias por lance, no mesmo modelo de expected
+    // points da classificação.
     const acc = computeGameAccuracies(collected);
     const accW = acc.white;
     const accB = acc.black;
+    const anchor = ratingAnchorFromHeaders(parsed.headers);
 
     const result = {
       headers: parsed.headers,
       moves: collected,
       accuracy_white: Math.round(accW * 10) / 10,
       accuracy_black: Math.round(accB * 10) / 10,
-      elo_white: estimateElo(accW),
-      elo_black: estimateElo(accB),
+      elo_white: estimateElo(accW, anchor),
+      elo_black: estimateElo(accB, anchor),
       counts_white: counts.white,
       counts_black: counts.black,
       opening: opening,

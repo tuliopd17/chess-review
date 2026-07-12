@@ -61,9 +61,22 @@ test("moveAccuracy: cai com a perda de win%, limitada a [0,100]", () => {
 });
 
 test("estimateElo: monotônica e em faixa plausível", () => {
-  const elos = [40, 55, 65, 75, 85, 95, 100].map(A.estimateElo);
+  const elos = [40, 55, 65, 75, 85, 95, 100].map((a) => A.estimateElo(a));
   for (let i = 1; i < elos.length; i++) assert.ok(elos[i] >= elos[i - 1], "ELO não-monotônico");
-  assert.ok(elos[0] >= 300 && elos[elos.length - 1] <= 2800, `ELO fora de faixa: ${elos}`);
+  assert.ok(elos[0] >= 100 && elos[elos.length - 1] <= 3200, `ELO fora de faixa: ${elos}`);
+});
+
+test("estimateElo: fit da comunidade (acc>=80: (acc-64)*100)", () => {
+  assert.equal(A.estimateElo(80), 1600);
+  assert.equal(A.estimateElo(90), 2600);
+  assert.equal(A.estimateElo(100), 3200); // (100-64)*100=3600, capado em 3200
+});
+
+test("estimateElo: âncora de rating puxa a estimativa pro meio", () => {
+  // acc 90 => 2600 puro; ancorado em 1200 => (2600+1200)/2 = 1900
+  assert.equal(A.estimateElo(90, 1200), 1900);
+  // âncora inválida é ignorada
+  assert.equal(A.estimateElo(90, NaN), 2600);
 });
 
 test("computeGameAccuracies: partida perfeita ~100, com capivarada cai", () => {

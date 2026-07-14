@@ -622,6 +622,7 @@ button.danger:hover { background: var(--danger); color: white; }
 .player-acc .acc { font-size: 1.6rem; color: var(--accent); margin-top: 4px; font-weight: 700; }
 .player-acc .acc-label { font-size: 0.7rem; color: var(--text-muted); }
 .player-acc .elo { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+.player-acc .elo-range { opacity: 0.65; font-size: 0.9em; white-space: nowrap; }
 
 /* 3 colunas: nº das brancas (esq.) | rótulo (centro) | nº das pretas (dir.).
    Assim cada cor vira uma coluna alinhada e dá pra ler a quantidade de cada

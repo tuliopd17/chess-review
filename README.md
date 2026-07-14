@@ -175,11 +175,15 @@ A análise em si **não** é feita no backend — só no navegador.
 
 ## Como funciona a classificação
 
-A lógica replica o **Expected Points Model** do chess.com (e a implementação de referência open-source [WintrCat/freechess](https://github.com/WintrCat/freechess)). Cada lance é classificado pela **queda de probabilidade de vitória** entre a melhor jogada da posição e a jogada efetivamente feita, ambas do ponto de vista de quem moveu. A conversão de centipawns para winrate usa a sigmoide do Lichess:
+A lógica replica o **Expected Points Model** do chess.com (Classification V2, e a implementação de referência open-source [WintrCat/freechess](https://github.com/WintrCat/freechess)). Cada lance é classificado pela **queda de probabilidade de vitória** entre a melhor jogada da posição e a jogada efetivamente feita, ambas do ponto de vista de quem moveu. A conversão de centipawns para winrate usa uma sigmoide **dependente do rating do jogador** — como no chess.com oficial ("winning chances based on their rating and the engine evaluation"):
 
 ```
-winrate = 1 / (1 + exp(-0.00368208 × cp))
+winrate = 1 / (1 + exp(-k(rating) × cp))
 ```
+
+`k(rating)` interpola âncoras públicas: ~0.0028 em Elo baixo (um peão a menos ainda é jogo lá), 0.00368208 no default (coeficiente clássico do Lichess, PR lila#11148) e ~0.006+ para 2300+ na escala **normalizada** do SF 15.1+ (em que +1.00 = 50% de vitória em self-play; o fit de 2022 do Lichess foi feito na escala antiga). Sem rating nos headers, a curva default reproduz o comportamento clássico.
+
+Depois da passada inicial, os lances marcados como blunder/mistake/miss/great/brilliant passam por uma **fase de confirmação em profundidade maior** (posições re-analisadas com +3 de depth) — elimina a maior parte dos falsos blunders de análise rasa, como o Game Review do chess.com também revisa rótulos.
 
 Os limiares (em pontos de win-prob, 0–1) são exatamente os publicados pelo chess.com:
 
@@ -206,7 +210,11 @@ Por cima dos limiares vêm as classificações **especiais**, que não dependem 
 
 Os **comentários** de cada lance não apenas rotulam — explicam a consequência concreta (perde tal peça, permite mate em N, deixou passar o ganho de material, é o único lance que segura), traduzindo a linha do engine em linguagem humana.
 
-Acurácia: `103.1668 × exp(-0.04354 × loss%) - 3.1669` por lance (fórmula do Lichess), combinada por média harmônica + média ponderada por volatilidade (aproxima de perto o chess.com).
+**Acurácia**: `103.1668 × exp(-0.04354 × loss%) - 3.1669` por lance (fórmula aberta do Lichess, na curva fixa — números comparáveis com lichess/chess.com), combinada por média harmônica + média ponderada por volatilidade (o mesmo desenho do CAPS2).
+
+**Estimativa de Elo**: posterior bayesiano sobre a performance da partida — verossimilhança gaussiana da acurácia sobre as curvas **acurácia↔rating por ritmo** (dados GM Larry Kaufman/hissha, chess.com 2023: bullet/blitz/rapid/classical), prior no rating do jogador nos headers do PGN, e conversão de escala lichess↔chess.com (medianas ChessGoals) quando a partida vem do lichess. O resultado sai com **intervalo de credibilidade de 80%** — uma partida só carrega ±300 Elo de incerteza (Regan, *Intrinsic Chess Ratings*, precisa de ~1500 lances para ±100), e esconder isso seria marketing, não medição.
+
+**WDL**: o engine roda com `UCI_ShowWDL` e cada posição carrega probabilidades Win/Draw/Loss do modelo interno do Stockfish (dependente de eval + material); há um port JS exato do `win_rate_model` do SF 18 como fallback.
 
 ## Roadmap
 

@@ -741,7 +741,16 @@ async function analyzePgnStreaming(pgn, playerUsername = null) {
     const result = await ChessReviewAnalysis.analyzeGame(
       parsed,
       pool,
-      { depth },
+      {
+        depth,
+        // Fase 2 da análise: lances críticos re-verificados em profundidade
+        // maior (mata falso-blunder de depth raso). Reaproveita a barra de
+        // progresso com um rótulo próprio.
+        onRefineProgress: (done, total) => {
+          if (runId !== state.analysisRunId) return;
+          showProgress(true, done, total, "Confirmando lances críticos");
+        },
+      },
       (moveData, idx, total) => {
         if (runId !== state.analysisRunId) return; // descarta callbacks de análise antiga
         state.partialMoves.push(moveData);
@@ -791,7 +800,7 @@ function resetForNewAnalysis() {
   goToPly(0);
 }
 
-function showProgress(visible, current = 0, total = 0) {
+function showProgress(visible, current = 0, total = 0, label = "") {
   const bar = document.getElementById("progress-bar");
   const fill = document.getElementById("progress-fill");
   const txt = document.getElementById("progress-text");
@@ -799,7 +808,7 @@ function showProgress(visible, current = 0, total = 0) {
   if (visible) {
     const pct = total > 0 ? (current / total) * 100 : 0;
     fill.style.width = pct + "%";
-    txt.textContent = `${current} / ${total}`;
+    txt.textContent = label ? `${label} — ${current} / ${total}` : `${current} / ${total}`;
   }
 }
 
@@ -998,18 +1007,22 @@ function renderSummary() {
   const h = a.headers || {};
   const whiteName = h.White || "Brancas";
   const blackName = h.Black || "Pretas";
+  // Faixa de credibilidade do posterior de Elo (80%): comunica a incerteza
+  // real de estimar rating a partir de UMA partida.
+  const eloRange = (r) =>
+    r && r.length === 2 ? `<span class="elo-range">(${r[0]}–${r[1]})</span>` : "";
   document.getElementById("players-summary").innerHTML = `
     <div class="player-acc">
       <div class="name">${escapeHtml(whiteName)}</div>
       <div class="acc">${a.accuracy_white}</div>
       <div class="acc-label">acurácia</div>
-      <div class="elo">ELO est. ~${a.elo_white}</div>
+      <div class="elo">ELO est. ~${a.elo_white} ${eloRange(a.elo_white_range)}</div>
     </div>
     <div class="player-acc">
       <div class="name">${escapeHtml(blackName)}</div>
       <div class="acc">${a.accuracy_black}</div>
       <div class="acc-label">acurácia</div>
-      <div class="elo">ELO est. ~${a.elo_black}</div>
+      <div class="elo">ELO est. ~${a.elo_black} ${eloRange(a.elo_black_range)}</div>
     </div>
   `;
   const cw = a.counts_white || {};

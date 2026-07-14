@@ -116,6 +116,10 @@
                   log("uciok recebido, configurando opções");
                   worker.postMessage(`setoption name Hash value ${this._hashMb}`);
                   worker.postMessage("setoption name MultiPV value 1");
+                  // WDL nativo do Stockfish (modelo interno ajustado por eval e
+                  // material). Builds sem a opção só imprimem "No such option"
+                  // — inofensivo.
+                  worker.postMessage("setoption name UCI_ShowWDL value true");
                   worker.postMessage("ucinewgame");
                   worker.postMessage("isready");
                 }
@@ -181,7 +185,7 @@
 
     _parseInfo(line) {
       const tokens = line.split(/\s+/);
-      const out = { depth: 0, multipv: 1, score: null, pv: [], nodes: 0, nps: 0, time: 0 };
+      const out = { depth: 0, multipv: 1, score: null, pv: [], nodes: 0, nps: 0, time: 0, wdl: null };
       for (let i = 1; i < tokens.length; i++) {
         const t = tokens[i];
         if (t === "depth")        out.depth = parseInt(tokens[++i], 10);
@@ -189,6 +193,13 @@
         else if (t === "nodes")   out.nodes = parseInt(tokens[++i], 10);
         else if (t === "nps")     out.nps = parseInt(tokens[++i], 10);
         else if (t === "time")    out.time = parseInt(tokens[++i], 10);
+        else if (t === "wdl") {
+          // "wdl W D L" em per-mille, POV do lado a mover (UCI_ShowWDL).
+          const w = parseInt(tokens[++i], 10);
+          const d = parseInt(tokens[++i], 10);
+          const l = parseInt(tokens[++i], 10);
+          if (isFinite(w) && isFinite(d) && isFinite(l)) out.wdl = { w, d, l };
+        }
         else if (t === "score") {
           const type = tokens[++i];
           const val = parseInt(tokens[++i], 10);

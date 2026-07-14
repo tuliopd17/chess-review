@@ -4,10 +4,13 @@
  * Cada caso é um `move` enriquecido (mesmos campos que analysis.js monta em
  * analyzeGame) + o `prevMove` opcional, e a classificação chess.com esperada.
  * Os valores de eval foram escolhidos pra cair EXATAMENTE em cada banda do
- * modelo wintrchess (expected points, sigmóide 0.0035/cp: Best <0.01,
- * Excellent <0.045, Good <0.08, Inaccuracy <0.12, Mistake <0.22, Blunder
- * >=0.22), e as posições de sacrifício (brilliant/great) são linhas reais
- * verificadas (Mate de Legall etc.).
+ * Chess.com Classification V2 (expected points, sigmóide Lichess 0.00368208/cp):
+ *
+ *   Best <0.005 · Excellent <0.02 · Good <0.05 · Inaccuracy <0.10 ·
+ *   Mistake <0.20 · Blunder ≥0.20
+ *
+ * (Help center oficial chess.com, fev/2026.) As posições de sacrifício
+ * (brilliant/great) são linhas reais verificadas (Mate de Legall etc.).
  *
  * Pra ADICIONAR um caso de partida real do chess.com: pegue fen_before,
  * fen_after, os evals do engine e o rótulo que o chess.com mostrou, e some aqui.
@@ -81,23 +84,32 @@ const greatMove = {
   best_move_san: "Nc3", // é o melhor => elegível
   best_eval_cp: 120,
   eval_after_cp: 120,
-  second_best_eval_cp: -150, // 2º melhor perde ~23% de expected points
+  second_best_eval_cp: -150, // 2º melhor perde ~24% de expected points
   is_capture: false,
   to: greatLine.to,
   net_material: 0,
 };
 
+// Evals calibrados com WIN_PCT_GRADIENT = 0.00368208 (Lichess).
+// quiet(before, after) → expected points loss nas bandas V2 oficiais.
 const CLASSIFICATION_CASES = [
   { name: "book move", move: quiet(20, 20, { in_book: true }), prev: null, expected: "book" },
   { name: "forced (único legal)", move: quiet(0, -300, { is_only_move: true }), prev: null, expected: "forced" },
   { name: "best (san === best)", move: quiet(30, 30, { san: "Ng5", best_move_san: "Ng5", uci: "f3g5", to: "g5" }), prev: null, expected: "best" },
-  { name: "best por point-loss (loss ~0.004, san != best)", move: quiet(30, 25), prev: null, expected: "best" },
-  { name: "excellent (loss ~0.013)", move: quiet(30, 15), prev: null, expected: "excellent" },
-  { name: "good (loss ~0.061)", move: quiet(40, -30), prev: null, expected: "good" },
-  { name: "inaccuracy (loss ~0.104)", move: quiet(40, -80), prev: null, expected: "inaccuracy" },
-  { name: "mistake (loss ~0.147)", move: quiet(50, -120), prev: null, expected: "mistake" },
+  // loss ~0.0046 < 0.005
+  { name: "best por point-loss (loss ~0.005, san != best)", move: quiet(30, 25), prev: null, expected: "best" },
+  // loss ~0.0138 ∈ [0.005, 0.02)
+  { name: "excellent (loss ~0.014)", move: quiet(30, 15), prev: null, expected: "excellent" },
+  // loss ~0.046 ∈ [0.02, 0.05)
+  { name: "good (loss ~0.046)", move: quiet(30, -20), prev: null, expected: "good" },
+  // loss ~0.096 ∈ [0.05, 0.10)
+  { name: "inaccuracy (loss ~0.096)", move: quiet(30, -75), prev: null, expected: "inaccuracy" },
+  // loss ~0.155 ∈ [0.10, 0.20)
+  { name: "mistake (loss ~0.155)", move: quiet(50, -120), prev: null, expected: "mistake" },
+  // loss ~0.45 ≥ 0.20
   { name: "blunder (larga tudo)", move: quiet(50, -600), prev: null, expected: "blunder" },
   { name: "allowed mate-in-1", move: quiet(50, -(MATE - 1)), prev: null, expected: "blunder" },
+  // tinha +400 (ep≈0.81) e virou +50 (ep≈0.55) → miss
   { name: "miss (tinha +400, virou +50)", move: quiet(400, 50), prev: null, expected: "miss" },
   { name: "brilliant (sac de Legall)", move: brilliantMove, prev: null, expected: "brilliant" },
   { name: "great (única jogada à altura)", move: greatMove, prev: null, expected: "great" },

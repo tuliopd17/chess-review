@@ -22,12 +22,20 @@
   const MATE_SCORE_CP = 10000;
 
   // ===== Conversões eval =====
+  //
+  // Modelo unificado de expected points / Win% — o mesmo em classificação,
+  // acurácia por lance e acurácia da partida. Coeficiente do Lichess
+  // (0.00368208), calibrado em jogos reais 2300+ (PR lichess#11148). Melhor
+  // base empírica pública do que o 0.0035 do wintrchess.
+
+  const WIN_PCT_GRADIENT = 0.00368208;
 
   function cpToWinrate(cp) {
+    if (cp == null || !isFinite(cp)) return 0.5;
     if (cp >= MATE_SCORE_CP - 1000) return 1.0;
     if (cp <= -(MATE_SCORE_CP - 1000)) return 0.0;
     cp = Math.max(-1500, Math.min(1500, cp));
-    return 1.0 / (1.0 + Math.exp(-0.00368208 * cp));
+    return 1.0 / (1.0 + Math.exp(-WIN_PCT_GRADIENT * cp));
   }
 
   function scoreToCp(score) {
@@ -46,11 +54,10 @@
     return 100 * cpToWinrate(cp);
   }
 
-  // Acurácia de UM lance (fórmula do Lichess), dadas as win% (0..100) ANTES
-  // (melhor jogada possível na posição) e DEPOIS (lance efetivamente jogado),
-  // ambas do ponto de vista de quem moveu. O "+1" é o bônus de incerteza que o
-  // Lichess aplica (análise imperfeita). Mantida só por compat da API exportada;
-  // a acurácia da partida usa o modelo wintrchess (computeGameAccuracies).
+  // Acurácia de UM lance (fórmula CAPS2 / Lichess), dadas as win% (0..100)
+  // ANTES (melhor jogada possível) e DEPOIS (lance jogado), POV de quem moveu.
+  // O "+1" é o bônus de incerteza do Lichess (análise imperfeita).
+  // Fonte: https://lichess.org/page/accuracy e AccuracyPercent.scala
   function moveAccuracy(winBefore, winAfter) {
     if (winAfter >= winBefore) return 100;
     const winDiff = winBefore - winAfter;
@@ -59,61 +66,197 @@
     return Math.max(0.0, Math.min(100.0, raw + 1));
   }
 
-  // Compat: acurácia a partir da perda de winrate (0..1). Mantida pra quem
-  // importa do escopo global; internamente usamos moveAccuracy().
+  // Compat: acurácia a partir da perda de winrate (0..1).
   function accuracyFromLoss(loss) {
     const before = 100;
     const after = before - Math.max(0, loss) * 100;
     return moveAccuracy(before, after);
   }
 
+  function _clamp(x, lo, hi) {
+    return Math.max(lo, Math.min(hi, x));
+  }
+
+  function _stddev(arr) {
+    if (!arr || arr.length < 2) return 0;
+    let mean = 0;
+    for (const v of arr) mean += v;
+    mean /= arr.length;
+    let varSum = 0;
+    for (const v of arr) varSum += (v - mean) * (v - mean);
+    return Math.sqrt(varSum / arr.length);
+  }
+
+  // Média harmônica — pune capivaradas bem mais que a aritmética (um 0% entre
+  // vários 100% derruba o total). Floor 0.1 evita divisão por zero.
+  function _harmonicMean(values) {
+    if (!values.length) return 0;
+    let inv = 0;
+    for (const v of values) inv += 1 / Math.max(v, 0.1);
+    return values.length / inv;
+  }
+
   /**
-   * Acurácia da partida por cor, no método do wintrchess (que replica o número
-   * que o chess.com mostra): acurácia por lance a partir da perda de expected
-   * points do MESMO modelo usado na classificação (sigmóide 0.0035/cp), e a
-   * acurácia da partida é a média aritmética simples por cor — o chess.com não
-   * usa média harmônica nem ponderação por volatilidade (isso é o Lichess, que
-   * pune capivaradas bem mais).
+   * Acurácia da partida por cor — CAPS2 do Lichess (código aberto, documentado):
+   *   gameAccuracy = média( média ponderada por volatilidade , média harmônica )
+   *
+   * Por que não média aritmética simples (wintrchess/chess.com legado)?
+   * - Um único blunder entre 40 lances perfeitos só derruba ~2.5 pts na
+   *   aritmética, mas o "sentimento" humano é bem pior — a harmônica corrige.
+   * - Volatilidade: lances em posições calmas (abertura) pesam menos que lances
+   *   em posições táticas; assim a acurácia reflete melhor a qualidade real.
+   *
+   * Book e forced contam como 100% (não há escolha real / teoria).
+   * Fonte: AccuracyPercent.scala (lila) e https://lichess.org/page/accuracy
    */
   function computeGameAccuracies(collected) {
     const out = { white: 0, black: 0 };
-    const per = { white: [], black: [] };
+    if (!collected.length) return out;
+
+    // Sequência de Win% do ponto de vista das brancas (posição inicial = 50)
+    // + acurácia por lance. Usada pra janelas de volatilidade.
+    const winWhiteSeq = [50];
+    const moveData = [];
     for (const m of collected) {
-      const loss = expectedPointsLoss(m.best_eval_cp, m.eval_after_cp);
-      const acc = Math.max(0, Math.min(100, 103.16 * Math.exp(-4 * loss) - 3.17));
-      if (per[m.color]) per[m.color].push(acc);
+      const isBookOrForced = m.classification === "book"
+        || m.classification === "forced"
+        || m.in_book
+        || m.is_only_move;
+      const winBefore = cpToWinPercent(m.best_eval_cp);
+      const winAfter = cpToWinPercent(m.eval_after_cp);
+      const acc = isBookOrForced ? 100 : moveAccuracy(winBefore, winAfter);
+      // Win% "depois" do lance no POV das brancas.
+      const winWhite = m.color === "white" ? winAfter : 100 - winAfter;
+      winWhiteSeq.push(winWhite);
+      moveData.push({ color: m.color, acc });
     }
-    for (const color of ["white", "black"]) {
-      const a = per[color];
-      out[color] = a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+
+    // Tamanho da janela de volatilidade: clamp(n/10, 2, 8) — igual ao Lichess.
+    const windowSize = _clamp(Math.floor(collected.length / 10), 2, 8);
+
+    const byColor = { white: [], black: [] };
+    for (let i = 0; i < moveData.length; i++) {
+      // Janela terminando no Win% pós-lance i (índice i+1 em winWhiteSeq).
+      const end = i + 1;
+      const start = Math.max(0, end - windowSize + 1);
+      const slice = winWhiteSeq.slice(start, end + 1);
+      const weight = _clamp(_stddev(slice) || 0.5, 0.5, 12);
+      byColor[moveData[i].color].push({ acc: moveData[i].acc, weight });
     }
+
+    function colorAccuracy(items) {
+      if (!items.length) return 0;
+      let wSum = 0, aSum = 0;
+      const accs = [];
+      for (const it of items) {
+        wSum += it.weight;
+        aSum += it.acc * it.weight;
+        accs.push(it.acc);
+      }
+      const weighted = aSum / wSum;
+      const harmonic = _harmonicMean(accs);
+      return (weighted + harmonic) / 2;
+    }
+
+    out.white = colorAccuracy(byColor.white);
+    out.black = colorAccuracy(byColor.black);
     return out;
   }
 
   /**
-   * ELO estimado da performance na partida. O chess.com não publica a fórmula
-   * (o help diz: qualidade dos lances + rating real dos dois jogadores), então
-   * usamos o fit empírico da comunidade pra rapid — ~92.6 Elo por ponto de
-   * acurácia na faixa 1600–2400, aproximado por rating ≈ (acurácia − 64) × 100
-   * pra acurácia >= 80 — e, quando o PGN traz os ratings reais (WhiteElo /
-   * BlackElo), ancoramos a estimativa neles como o chess.com faz.
+   * ACPL (Average Centipawn Loss) de um lado — sinal secundário de performance.
+   * Cada lance é clampado em 1000 cp (prática padrão: um mate perdido não
+   * explode a média).
    */
-  function estimateElo(accuracy, anchorElo) {
-    let elo;
-    if (accuracy >= 80) elo = (accuracy - 64) * 100;
-    else elo = 1600 - (80 - accuracy) * 30; // desce suave até ~100 em acc 30
-    if (anchorElo != null && isFinite(anchorElo)) elo = (elo + anchorElo) / 2;
-    return Math.round(Math.max(100, Math.min(3200, elo)));
+  function averageCentipawnLoss(collected, color) {
+    let sum = 0, n = 0;
+    for (const m of collected) {
+      if (m.color !== color) continue;
+      if (m.classification === "book" || m.classification === "forced"
+          || m.in_book || m.is_only_move) continue;
+      const loss = Math.max(0, (m.best_eval_cp || 0) - (m.eval_after_cp || 0));
+      sum += Math.min(1000, loss);
+      n++;
+    }
+    return n ? sum / n : null;
   }
 
-  // Âncora de rating a partir dos headers do PGN: média de WhiteElo/BlackElo
-  // (ignora "?" e valores não numéricos). null quando não há rating algum.
-  function ratingAnchorFromHeaders(headers) {
-    const vals = [];
-    for (const k of ["WhiteElo", "BlackElo"]) {
-      const n = parseInt(headers && headers[k], 10);
-      if (isFinite(n) && n > 0) vals.push(n);
+  /**
+   * Elo a partir da acurácia — fit empírico Chess.com rapid (GM Larry Kaufman /
+   * hissha, 2023): Accuracy ≈ Elo/100 + 64  ⇒  Elo ≈ (Accuracy − 64) × 100
+   * na faixa ≥80. Abaixo de 80 o linear superestima (~100 Elo nos mid-70s);
+   * usamos curva por peças calibrada nas médias por faixa publicadas:
+   *   ~50% → ~500 · ~65% → ~850 · ~75% → ~1250 · 80% → 1600 · 90% → 2600
+   */
+  function eloFromAccuracy(accuracy) {
+    const a = _clamp(accuracy, 0, 100);
+    if (a >= 80) return (a - 64) * 100;
+    if (a >= 70) return 1150 + (a - 70) * 45;   // 70→1150, 80→1600
+    if (a >= 50) return 450 + (a - 50) * 35;     // 50→450,  70→1150
+    return 180 + (a - 30) * 13.5;                 // 30→180,  50→450
+  }
+
+  /**
+   * Elo a partir de ACPL: Elo ≈ 3100 · e^(−0.01 · ACPL) (fit comunitário
+   * Lichess). Complementa a acurácia — um jogo com um blunder grave e resto
+   * perfeito tem ACPL alto e acurácia CAPS2 já castigada; o blend estabiliza.
+   */
+  function eloFromAcpl(acpl) {
+    if (acpl == null || !isFinite(acpl)) return null;
+    const a = _clamp(acpl, 0, 300);
+    return 3100 * Math.exp(-0.01 * a);
+  }
+
+  /**
+   * ELO estimado da performance na partida.
+   *
+   * 1. Performance base: blend 70% elo-por-acurácia + 30% elo-por-ACPL.
+   * 2. Âncora bayesiana suave no rating do PRÓPRIO jogador (WhiteElo pra
+   *    brancas, BlackElo pra pretas) — o chess.com usa o rating prévio como
+   *    prior; 50/50 rígido puxava demais e misturava os dois lados. Aqui o
+   *    peso do prior cai com o nº de lances (pseudo-contagem n0=12).
+   *
+   * estimateElo(accuracy) e estimateElo(accuracy, anchor) continuam válidos
+   * (2º arg numérico = âncora); opts = { anchorElo, moveCount, acpl }.
+   */
+  function estimateElo(accuracy, anchorOrOpts, maybeOpts) {
+    let opts = {};
+    if (anchorOrOpts != null && typeof anchorOrOpts === "object") {
+      opts = anchorOrOpts;
+    } else {
+      opts = maybeOpts && typeof maybeOpts === "object" ? { ...maybeOpts } : {};
+      if (anchorOrOpts != null) opts.anchorElo = anchorOrOpts;
     }
+
+    let perf = eloFromAccuracy(accuracy);
+    const acplElo = eloFromAcpl(opts.acpl);
+    if (acplElo != null) perf = 0.7 * perf + 0.3 * acplElo;
+
+    const anchor = opts.anchorElo;
+    if (anchor != null && isFinite(anchor) && anchor > 0) {
+      const n = opts.moveCount != null ? opts.moveCount : 20;
+      const n0 = 12; // força do prior (~12 lances de peso)
+      // Peso do prior: alto com poucos lances, teto 45% mesmo com amostra grande
+      // (o chess.com também ancora, nunca ignora o rating de conta).
+      const priorW = Math.min(0.45, n0 / (n + n0));
+      perf = (1 - priorW) * perf + priorW * anchor;
+    }
+    return Math.round(Math.max(100, Math.min(3200, perf)));
+  }
+
+  // Ratings por lado a partir dos headers do PGN (ignora "?" / não-numéricos).
+  function ratingsFromHeaders(headers) {
+    const parse = (k) => {
+      const n = parseInt(headers && headers[k], 10);
+      return isFinite(n) && n > 0 ? n : null;
+    };
+    return { white: parse("WhiteElo"), black: parse("BlackElo") };
+  }
+
+  // Compat: âncora única = média dos dois lados (API legada).
+  function ratingAnchorFromHeaders(headers) {
+    const r = ratingsFromHeaders(headers);
+    const vals = [r.white, r.black].filter((v) => v != null);
     if (!vals.length) return null;
     return vals.reduce((a, b) => a + b, 0) / vals.length;
   }
@@ -482,24 +625,26 @@
 
   // ===== Classificação =====
   //
-  // Modelo do chess.com via wintrchess (WintrCat), a réplica aberta mais fiel
-  // do Game Review: o lance é classificado pela QUEDA de "expected points"
-  // (prob. de vitória, sigmóide com gradiente 0.0035/cp) entre a melhor jogada
-  // da posição e a jogada feita, ambas do ponto de vista de quem moveu:
+  // Expected Points Model — Chess.com Classification V2 (help center oficial,
+  // fev/2026) + transições de mate / especiais do wintrchess (Brilliant, Great,
+  // Miss). Sigmóide unificada com a acurácia (WIN_PCT_GRADIENT do Lichess).
   //
-  //   Best <0.01 · Excellent <0.045 · Good <0.08 · Inaccuracy <0.12 ·
-  //   Mistake <0.22 · Blunder >=0.22
+  // Bandas oficiais de expected points perdidos (0..1):
+  //   Best ≈0 · Excellent <0.02 · Good <0.05 · Inaccuracy <0.10 ·
+  //   Mistake <0.20 · Blunder ≥0.20
   //
-  // (O help center do chess.com publica 0.02/0.05/0.10/0.20 arredondados; as
-  // bandas do wintrchess foram calibradas contra o Game Review real.) Um lance
-  // pode ser "Best" mesmo sem ser o nº 1 do engine, se a perda é ~zero — igual
-  // ao chess.com. Sobre isso vêm as especiais (Brilliant, Great, Book, Forced,
-  // Miss) e as transições envolvendo MATE, que têm tabelas próprias (mate em 5
-  // e mate em 1 têm ambos ~100% de win-prob — mas largar mate forçado é erro).
-
-  const EP_GRADIENT = 0.0035;
+  // "Best" tolera perda <0.005 (ruído de profundidade / lances equivalentes).
+  // Um lance pode ser Best sem ser o nº1 do engine se a perda é ~zero — igual
+  // ao chess.com. Sobre isso: Brilliant, Great, Book, Forced, Miss.
 
   const MATE_CP_THRESHOLD = MATE_SCORE_CP - 1000; // 9000
+
+  // Chess.com Classification V2 — cutoffs de expected points perdidos.
+  const EP_BEST = 0.005;
+  const EP_EXCELLENT = 0.02;
+  const EP_GOOD = 0.05;
+  const EP_INACCURACY = 0.10;
+  const EP_MISTAKE = 0.20;
 
   function isMateCp(cp) {
     return cp != null && Math.abs(cp) >= MATE_CP_THRESHOLD;
@@ -512,10 +657,9 @@
     return (cp >= 0 ? 1 : -1) * n;
   }
 
-  // Expected points (0..1) de um eval em cp, POV de quem move.
+  // Expected points (0..1) — mesmo modelo da acurácia (cpToWinrate).
   function expectedPointsFromCp(cp) {
-    if (isMateCp(cp)) return cp > 0 ? 1 : 0;
-    return 1 / (1 + Math.exp(-EP_GRADIENT * cp));
+    return cpToWinrate(cp);
   }
 
   function expectedPointsLoss(beforeCp, afterCp) {
@@ -523,7 +667,8 @@
   }
 
   // Classificação pela perda de expected points, com as quatro combinações de
-  // tipo de eval (cp/mate) — port fiel do pointLossClassify do wintrchess.
+  // tipo de eval (cp/mate). Transições de mate: tabela própria (mate em 5 e
+  // mate em 1 têm ambos ~100% de win-prob, mas largar mate forçado é erro).
   function pointLossClassify(move) {
     const prevEval = move.best_eval_cp;     // melhor avaliação ANTES (POV do jogador)
     const evalAfter = move.eval_after_cp;   // avaliação DEPOIS (POV do jogador)
@@ -564,13 +709,13 @@
       return "inaccuracy";
     }
 
-    // Caminho comum (cp -> cp): bandas de expected points.
+    // Caminho comum (cp → cp): Chess.com Classification V2.
     const loss = expectedPointsLoss(prevEval, evalAfter);
-    if (loss < 0.01) return "best";
-    if (loss < 0.045) return "excellent";
-    if (loss < 0.08) return "good";
-    if (loss < 0.12) return "inaccuracy";
-    if (loss < 0.22) return "mistake";
+    if (loss < EP_BEST) return "best";
+    if (loss < EP_EXCELLENT) return "excellent";
+    if (loss < EP_GOOD) return "good";
+    if (loss < EP_INACCURACY) return "inaccuracy";
+    if (loss < EP_MISTAKE) return "mistake";
     return "blunder";
   }
 
@@ -588,15 +733,17 @@
     // Brilliant: sacrifício real (peça de valor deixada insegura de propósito).
     if ((cls === "best" || cls === "great") && considerBrilliant(move)) cls = "brilliant";
 
-    // ---- Miss: tinha um GANHO claro nas mãos e deixou escapar. ----
-    // O chess.com mostra "Oportunidade Perdida" quando você estava ganhando (ou
-    // tinha mate) e, em vez de converter, o lance leva a posição de volta pra
-    // igualdade ou pior. Sobrepõe os tons negativos (inaccuracy/mistake/blunder).
+    // ---- Miss: falhou em capitalizar erro do oponente / converter ganho. ----
+    // Chess.com: "fail to capitalize on opponent's mistake" → posição vencedora
+    // escapa pra igualdade ou pior. Limiares em expected points (~0.75 win ≈
+    // +300 cp; manter ≥0.60 win ≈ +100 cp) em vez de cp fixos soltos.
     if (cls === "inaccuracy" || cls === "mistake" || cls === "blunder") {
       const prevMate = isMateCp(move.best_eval_cp);
       const afterMate = isMateCp(move.eval_after_cp);
-      const hadWin = prevMate ? move.best_eval_cp > 0 : move.best_eval_cp >= 300;
-      const keptWin = afterMate ? move.eval_after_cp > 0 : move.eval_after_cp >= 100;
+      const epBefore = expectedPointsFromCp(move.best_eval_cp);
+      const epAfter = expectedPointsFromCp(move.eval_after_cp);
+      const hadWin = prevMate ? move.best_eval_cp > 0 : epBefore >= 0.75;
+      const keptWin = afterMate ? move.eval_after_cp > 0 : epAfter >= 0.60;
       if (hadWin && !keptWin) cls = "miss";
     }
 
@@ -1057,21 +1204,34 @@
     for (const m of collected) {
       counts[m.color][m.classification] = (counts[m.color][m.classification] || 0) + 1;
     }
-    // Acurácia da partida pelo método do wintrchess (replica o chess.com):
-    // média simples das acurácias por lance, no mesmo modelo de expected
-    // points da classificação.
+    // Acurácia da partida (CAPS2 / Lichess) + Elo por performance (Kaufman +
+    // ACPL + âncora bayesiana no rating do próprio lado no PGN).
     const acc = computeGameAccuracies(collected);
     const accW = acc.white;
     const accB = acc.black;
-    const anchor = ratingAnchorFromHeaders(parsed.headers);
+    const ratings = ratingsFromHeaders(parsed.headers);
+    const nW = collected.filter((m) => m.color === "white").length;
+    const nB = collected.filter((m) => m.color === "black").length;
+    const acplW = averageCentipawnLoss(collected, "white");
+    const acplB = averageCentipawnLoss(collected, "black");
 
     const result = {
       headers: parsed.headers,
       moves: collected,
       accuracy_white: Math.round(accW * 10) / 10,
       accuracy_black: Math.round(accB * 10) / 10,
-      elo_white: estimateElo(accW, anchor),
-      elo_black: estimateElo(accB, anchor),
+      elo_white: estimateElo(accW, {
+        anchorElo: ratings.white,
+        moveCount: nW,
+        acpl: acplW,
+      }),
+      elo_black: estimateElo(accB, {
+        anchorElo: ratings.black,
+        moveCount: nB,
+        acpl: acplB,
+      }),
+      acpl_white: acplW != null ? Math.round(acplW * 10) / 10 : null,
+      acpl_black: acplB != null ? Math.round(acplB * 10) / 10 : null,
       counts_white: counts.white,
       counts_black: counts.black,
       opening: opening,
@@ -1131,7 +1291,14 @@
     accuracyFromLoss,
     moveAccuracy,
     computeGameAccuracies,
+    averageCentipawnLoss,
     estimateElo,
+    eloFromAccuracy,
+    eloFromAcpl,
+    expectedPointsFromCp,
+    expectedPointsLoss,
+    ratingsFromHeaders,
+    ratingAnchorFromHeaders,
     pvUciToSan,
     MATE_SCORE_CP,
   };

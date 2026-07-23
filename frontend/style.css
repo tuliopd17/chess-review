@@ -818,6 +818,167 @@ footer a { color: var(--accent); }
   border-radius: 3px;
   padding: 2px 6px;
 }
+.engine-depth-hint {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.engine-depth-hint strong { color: var(--text); font-weight: 600; }
+
+/* ===== Toasts ===== */
+.toast-root {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(380px, calc(100vw - 24px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: var(--shadow-card);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: cr-toast-in 0.2s ease-out;
+}
+.toast.toast-error { border-left: 3px solid var(--danger); }
+.toast.toast-success { border-left: 3px solid var(--accent); }
+.toast.toast-info { border-left: 3px solid var(--c-great); }
+.toast-msg { flex: 1; min-width: 0; }
+.toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 2px;
+  min-width: 28px;
+  min-height: 28px;
+}
+.toast-close:hover { color: var(--text); }
+@keyframes cr-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+
+/* ===== Diálogo de promoção ===== */
+.promo-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.55);
+  padding: 16px;
+}
+.promo-dialog[hidden] { display: none !important; }
+.promo-dialog-panel {
+  background: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px;
+  min-width: 220px;
+  text-align: center;
+}
+.promo-dialog-title {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.promo-dialog-pieces {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.promo-dialog-pieces button {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  font-size: 1.75rem;
+  line-height: 1;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+.promo-dialog-pieces button:hover,
+.promo-dialog-pieces button:focus-visible {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.promo-cancel {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 8px 12px;
+  min-height: 44px;
+}
+.promo-cancel:hover { color: var(--text); }
+
+/* ===== Multi-game picker ===== */
+.multi-game-picker {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.multi-game-title { margin: 0 0 8px; }
+.multi-game-picker .game-item.active {
+  outline: 1px solid var(--accent);
+  background: var(--bg-elevated);
+}
+
+/* ===== Ações do resumo (export / share) ===== */
+.summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+button.secondary {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 40px;
+}
+button.secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.secondary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* ===== Scrollbars (tema escuro) ===== */
 * {

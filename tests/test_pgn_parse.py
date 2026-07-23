@@ -49,3 +49,46 @@ def test_parse_scholars_mate():
 def test_parse_pgn_vazio_400():
     r = client.post("/api/pgn/parse", json={"pgn": "   "})
     assert r.status_code == 400
+
+
+MULTI_PGN = """[Event "G1"]
+[White "Alice"]
+[Black "Bob"]
+[Result "1-0"]
+
+1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0
+
+[Event "G2"]
+[White "Carol"]
+[Black "Dave"]
+[Result "0-1"]
+
+1. d4 d5 2. c4 0-1
+"""
+
+
+def test_parse_multi_game_defaults_to_first():
+    r = client.post("/api/pgn/parse", json={"pgn": MULTI_PGN})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["games_total"] == 2
+    assert data["game_index"] == 0
+    assert data["headers"]["White"] == "Alice"
+    assert len(data["available_games"]) == 2
+    assert data["available_games"][1]["white"] == "Carol"
+
+
+def test_parse_multi_game_selects_index():
+    r = client.post("/api/pgn/parse", json={"pgn": MULTI_PGN, "game_index": 1})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["game_index"] == 1
+    assert data["headers"]["White"] == "Carol"
+    assert data["headers"]["Black"] == "Dave"
+    # 1. d4 d5 2. c4  → 3 lances
+    assert len(data["moves"]) == 3
+
+
+def test_parse_multi_game_index_out_of_range():
+    r = client.post("/api/pgn/parse", json={"pgn": MULTI_PGN, "game_index": 5})
+    assert r.status_code == 400

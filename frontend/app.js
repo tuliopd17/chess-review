@@ -1,7 +1,7 @@
 /* Chess Review — frontend
- * Vanilla JS + chessboard.js + Chart.js.
- * Comunica com o backend FastAPI em /api/*.
- * Suporta streaming SSE, eval bar, overlays no tabuleiro, histórico local.
+ * Vanilla JS + cm-chessboard + chess.js + Highcharts (lazy).
+ * Comunica com o backend FastAPI em /api/* (parse PGN, imports).
+ * Análise da partida roda no browser via Stockfish WASM.
  */
 
 // ============================================================
@@ -10,7 +10,7 @@
 const state = {
   board: null,
   analysis: null,          // payload final (após "done")
-  partialMoves: [],        // lances recebidos enquanto stream tá rodando
+  partialMoves: [],        // lances recebidos enquanto análise roda
   partialHeaders: null,
   partialOpening: null,
   currentPly: 0,
@@ -19,6 +19,9 @@ const state = {
   totalPlies: 0,
   streaming: false,
   currentPgn: null,        // PGN da análise atual
+  gameIndex: 0,            // partida selecionada em PGN multi-game
+  availableGames: [],      // resumos quando o arquivo tem várias partidas
+  lastPlayerUsername: null,
 
   // ----- Engine WASM ao vivo -----
   engine: null,            // BrowserEngine (instância única, painel ao vivo + exploração)
@@ -28,6 +31,7 @@ const state = {
   liveToken: 0,            // invalida callbacks de análises ao vivo antigas
   engineMultiPV: 3,
   engineDepth: 22,
+  reviewDepth: 15,         // profundidade da classificação da partida
 
   // ----- Pool de engines (análise da partida em paralelo) -----
   enginePool: null,        // EnginePool (criado sob demanda na 1ª análise)
@@ -38,7 +42,10 @@ const state = {
   exploreChess: null,      // instância chess.js representando a posição
   exploreStartFen: null,   // FEN da posição quando começou a explorar
   exploreStartPly: 0,      // ply original em que a exploração começou
+  promoPending: null,      // { from, to, resolve } enquanto o diálogo de promoção está aberto
 };
+
+const PREFS_KEY = "chess_review_prefs_v1";
 
 const CLASS_LABELS = {
   brilliant:  "Lance Brilhante",
@@ -77,6 +84,7 @@ let _bootStarted = false;
 function bootApp() {
   if (_bootStarted) return;
   _bootStarted = true;
+  loadPrefs();
   initBoard();
   initTabs();
   initControls();
@@ -84,7 +92,83 @@ function bootApp() {
   initHistory();
   initLiveEngine();
   initBrandHome();
+  initPromoDialog();
+  initSummaryActions();
   loadFromHash();
+}
+
+// ============================================================
+// Preferências locais (usernames, depths)
+// ============================================================
+function loadPrefs() {
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { p = {}; }
+  if (p.chesscomUser) {
+    const el = document.getElementById("chesscom-user");
+    if (el && !el.value) el.value = p.chesscomUser;
+  }
+  if (p.lichessUser) {
+    const el = document.getElementById("lichess-user");
+    if (el && !el.value) el.value = p.lichessUser;
+  }
+  if (p.engineMultiPV) state.engineMultiPV = p.engineMultiPV;
+  if (p.engineDepth != null) state.engineDepth = p.engineDepth;
+  if (p.reviewDepth) state.reviewDepth = p.reviewDepth;
+
+  const mpv = document.getElementById("engine-multipv");
+  const dSel = document.getElementById("engine-depth-sel");
+  const rSel = document.getElementById("review-depth-sel");
+  if (mpv) mpv.value = String(state.engineMultiPV);
+  if (dSel) dSel.value = String(state.engineDepth);
+  if (rSel) rSel.value = String(state.reviewDepth);
+}
+
+function savePrefs() {
+  const p = {
+    chesscomUser: (document.getElementById("chesscom-user")?.value || "").trim(),
+    lichessUser: (document.getElementById("lichess-user")?.value || "").trim(),
+    engineMultiPV: state.engineMultiPV,
+    engineDepth: state.engineDepth,
+    reviewDepth: state.reviewDepth,
+  };
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {}
+}
+
+// ============================================================
+// Toasts (substitui alert() para erros e feedback)
+// ============================================================
+function showToast(message, type = "info", ms = 4500) {
+  const root = document.getElementById("toast-root");
+  if (!root) {
+    console[type === "error" ? "error" : "log"](message);
+    return;
+  }
+  const el = document.createElement("div");
+  el.className = `toast toast-${type}`;
+  el.setAttribute("role", type === "error" ? "alert" : "status");
+  const msg = document.createElement("div");
+  msg.className = "toast-msg";
+  msg.textContent = message;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "toast-close";
+  close.setAttribute("aria-label", "Fechar");
+  close.textContent = "×";
+  close.onclick = () => el.remove();
+  el.appendChild(msg);
+  el.appendChild(close);
+  root.appendChild(el);
+  if (ms > 0) setTimeout(() => { if (el.isConnected) el.remove(); }, ms);
+}
+
+function apiErrorDetail(err, fallback) {
+  if (err == null || err === "") return fallback;
+  if (typeof err === "string") return err;
+  if (Array.isArray(err)) {
+    return err.map(e => (e && e.msg) || String(e)).join("; ") || fallback;
+  }
+  if (typeof err === "object" && err.msg) return String(err.msg);
+  return fallback;
 }
 
 // Clique no logo do header recarrega a página (mesmo se já estiver em "/")
@@ -137,9 +221,19 @@ function handleMoveInput(event) {
     // Inicia ou continua exploração.
     if (!state.exploring) enterExploreMode();
     const chess = state.exploreChess;
+    const from = event.squareFrom;
+    const to = event.squareTo;
+
+    // Promoção: pede a peça antes de aplicar o lance (não força rainha).
+    if (needsPromotion(chess, from, to)) {
+      // Cancela o drop visual; o diálogo aplica o lance e atualiza o tabuleiro.
+      requestPromotionAndMove(from, to);
+      return false;
+    }
+
     let move = null;
     try {
-      move = chess.move({ from: event.squareFrom, to: event.squareTo, promotion: "q" });
+      move = chess.move({ from, to });
     } catch (e) { move = null; }
     if (!move) return false;
     // Lance válido — agenda render e análise ao vivo.
@@ -151,6 +245,93 @@ function handleMoveInput(event) {
   }
 
   return true;
+}
+
+/** True se o lance from→to é promoção de peão. */
+function needsPromotion(chess, from, to) {
+  if (!chess || !from || !to) return false;
+  const piece = chess.get(from);
+  if (!piece || piece.type !== "p") return false;
+  const rank = to[1];
+  if (piece.color === "w" && rank !== "8") return false;
+  if (piece.color === "b" && rank !== "1") return false;
+  // Valida se existe algum lance legal com promoção (q basta pra checar legalidade).
+  try {
+    const legal = chess.move({ from, to, promotion: "q" });
+    if (!legal) return false;
+    chess.undo();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function requestPromotionAndMove(from, to) {
+  showPromoDialog().then((piece) => {
+    if (!piece || !state.exploreChess) return;
+    if (!state.exploring) enterExploreMode();
+    let move = null;
+    try {
+      move = state.exploreChess.move({ from, to, promotion: piece });
+    } catch { move = null; }
+    if (!move) {
+      showToast("Lance de promoção inválido.", "error");
+      return;
+    }
+    state.board.setPosition(state.exploreChess.fen(), true);
+    renderExploreUI();
+    startLiveAnalysis(state.exploreChess.fen());
+  });
+}
+
+function initPromoDialog() {
+  const dlg = document.getElementById("promo-dialog");
+  if (!dlg) return;
+  dlg.querySelectorAll("[data-piece]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const piece = btn.getAttribute("data-piece");
+      hidePromoDialog(piece);
+    });
+  });
+  document.getElementById("promo-cancel")?.addEventListener("click", () => {
+    hidePromoDialog(null);
+  });
+  dlg.addEventListener("click", (e) => {
+    if (e.target === dlg) hidePromoDialog(null);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (dlg.hidden) return;
+    if (e.key === "Escape") hidePromoDialog(null);
+    const map = { q: "q", r: "r", b: "b", n: "n" };
+    const p = map[e.key?.toLowerCase()];
+    if (p) hidePromoDialog(p);
+  });
+}
+
+function showPromoDialog() {
+  const dlg = document.getElementById("promo-dialog");
+  if (!dlg) return Promise.resolve("q");
+  return new Promise((resolve) => {
+    // Cancela pedido anterior se houver.
+    if (state.promoPending) {
+      try { state.promoPending.resolve(null); } catch {}
+    }
+    state.promoPending = { resolve };
+    dlg.hidden = false;
+    dlg.setAttribute("aria-hidden", "false");
+    dlg.querySelector("[data-piece='q']")?.focus();
+  });
+}
+
+function hidePromoDialog(piece) {
+  const dlg = document.getElementById("promo-dialog");
+  if (dlg) {
+    dlg.hidden = true;
+    dlg.setAttribute("aria-hidden", "true");
+  }
+  const pending = state.promoPending;
+  state.promoPending = null;
+  if (pending) pending.resolve(piece || null);
 }
 
 function currentFen() {
@@ -275,31 +456,40 @@ function initControls() {
 function initImportButtons() {
   document.getElementById("analyze-pgn-btn").onclick = () => {
     const pgn = document.getElementById("pgn-input").value.trim();
-    if (!pgn) { alert("Cole um PGN primeiro."); return; }
+    if (!pgn) { showToast("Cole um PGN primeiro.", "error"); return; }
     // Tenta detectar o username do jogador a partir dos campos de busca
     // preenchidos (chess.com ou Lichess) — assim o PGN colado também
     // auto-detecta o lado certo.
     const chesscomUser = document.getElementById("chesscom-user").value.trim();
     const lichessUser = document.getElementById("lichess-user").value.trim();
     const playerUsername = chesscomUser || lichessUser || null;
-    analyzePgnStreaming(pgn, playerUsername);
+    // Nova análise de PGN colado: recomeça na 1ª partida do arquivo.
+    analyzePgnStreaming(pgn, playerUsername, { gameIndex: 0 });
   };
 
   document.getElementById("pgn-file").addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => { document.getElementById("pgn-input").value = ev.target.result; };
+    reader.onload = (ev) => {
+      document.getElementById("pgn-input").value = ev.target.result;
+      hideMultiGamePicker();
+      showToast(`Arquivo "${file.name}" carregado. Clique em Analisar.`, "info", 3000);
+    };
     reader.readAsText(file);
   });
 
   document.getElementById("fetch-chesscom-btn").onclick = () => {
     const u = document.getElementById("chesscom-user").value.trim();
-    if (u) fetchGames("chesscom", u, "chesscom-games");
+    if (!u) { showToast("Informe o usuário do chess.com.", "error"); return; }
+    savePrefs();
+    fetchGames("chesscom", u, "chesscom-games");
   };
   document.getElementById("fetch-lichess-btn").onclick = () => {
     const u = document.getElementById("lichess-user").value.trim();
-    if (u) fetchGames("lichess", u, "lichess-games");
+    if (!u) { showToast("Informe o usuário do lichess.", "error"); return; }
+    savePrefs();
+    fetchGames("lichess", u, "lichess-games");
   };
   document.getElementById("chesscom-user").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("fetch-chesscom-btn").click();
@@ -307,12 +497,32 @@ function initImportButtons() {
   document.getElementById("lichess-user").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("fetch-lichess-btn").click();
   });
+  document.getElementById("chesscom-user").addEventListener("change", savePrefs);
+  document.getElementById("lichess-user").addEventListener("change", savePrefs);
 
   document.getElementById("clear-history-btn").onclick = async () => {
     if (!confirm("Apagar todas as análises do histórico?")) return;
     await HistoryStore.clear();
     await renderHistory();
+    showToast("Histórico apagado.", "success", 2500);
   };
+}
+
+function initSummaryActions() {
+  document.getElementById("btn-export-pgn")?.addEventListener("click", () => {
+    try {
+      exportAnnotatedPgn();
+    } catch (e) {
+      showToast("Falha ao exportar PGN: " + e.message, "error");
+    }
+  });
+  document.getElementById("btn-share-link")?.addEventListener("click", async () => {
+    try {
+      await shareCurrentPgnLink();
+    } catch (e) {
+      showToast("Falha ao copiar link: " + e.message, "error");
+    }
+  });
 }
 
 function initHistory() {
@@ -400,12 +610,22 @@ async function initLiveEngine() {
 
   mpvSel.onchange = () => {
     state.engineMultiPV = parseInt(mpvSel.value, 10);
+    savePrefs();
     if (state.engineReady) startLiveAnalysis(currentFen());
   };
   dSel.onchange = () => {
     state.engineDepth = parseInt(dSel.value, 10);
+    savePrefs();
     if (state.engineReady) startLiveAnalysis(currentFen());
   };
+  const rSel = document.getElementById("review-depth-sel");
+  if (rSel) {
+    rSel.value = String(state.reviewDepth);
+    rSel.onchange = () => {
+      state.reviewDepth = parseInt(rSel.value, 10) || 15;
+      savePrefs();
+    };
+  }
 
   setEngineStatus("loading");
   try {
@@ -616,7 +836,9 @@ async function fetchGames(source, username, containerId) {
     const r = await fetch(`/api/${source}/${encodeURIComponent(username)}?limit=20`);
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      container.innerHTML = `<p class='placeholder'>Erro: ${err.detail || r.statusText}</p>`;
+      const detail = apiErrorDetail(err.detail, r.statusText || "erro");
+      container.innerHTML = `<p class='placeholder'>Erro: ${escapeHtml(detail)}</p>`;
+      if (r.status === 429) showToast(detail, "error");
       return;
     }
     const data = await r.json();
@@ -629,50 +851,61 @@ async function fetchGames(source, username, containerId) {
       const el = document.createElement("div");
       el.className = "game-item";
       const date = g.end_time ? new Date(g.end_time).toLocaleString("pt-BR") : "";
+      const resParts = String(g.result || "*").split("-");
       el.innerHTML = `
         <div class="players">
-          <span>${escapeHtml(g.white)} ${g.white_rating ? `(${g.white_rating})` : ""}
-            <span class="result">${g.result.split("-")[0]}</span>
+          <span>${escapeHtml(g.white)} ${g.white_rating ? `(${escapeHtml(String(g.white_rating))})` : ""}
+            <span class="result">${escapeHtml(resParts[0] || "")}</span>
           </span>
-          <span>${escapeHtml(g.black)} ${g.black_rating ? `(${g.black_rating})` : ""}
-            <span class="result">${g.result.split("-")[1]}</span>
+          <span>${escapeHtml(g.black)} ${g.black_rating ? `(${escapeHtml(String(g.black_rating))})` : ""}
+            <span class="result">${escapeHtml(resParts[1] || "")}</span>
           </span>
         </div>
-        <div class="meta">${g.time_class} · ${date}</div>
+        <div class="meta">${escapeHtml(g.time_class || "")} · ${escapeHtml(date)}</div>
       `;
       el.onclick = () => {
         document.getElementById("pgn-input").value = g.pgn;
         document.querySelector(".tab-btn[data-tab='pgn']").click();
+        hideMultiGamePicker();
         // Passa o username pra auto-detectar o lado do jogador.
-        analyzePgnStreaming(g.pgn, username);
+        analyzePgnStreaming(g.pgn, username, { gameIndex: 0 });
       };
       container.appendChild(el);
     });
   } catch (e) {
-    container.innerHTML = `<p class='placeholder'>Erro: ${e.message}</p>`;
+    container.innerHTML = `<p class='placeholder'>Erro: ${escapeHtml(e.message)}</p>`;
+    showToast("Falha ao buscar partidas: " + e.message, "error");
   }
 }
 
 // ============================================================
 // Análise da partida (Stockfish WASM no browser)
 // ============================================================
-async function analyzePgnStreaming(pgn, playerUsername = null) {
+async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
   // Toda nova chamada invalida a análise anterior (evita corrida se o usuário
   // clicar em outra partida no meio de uma análise) e cancela trabalho pendente.
   const runId = ++state.analysisRunId;
+  const gameIndex = opts.gameIndex != null ? opts.gameIndex : (state.gameIndex || 0);
   state.currentPgn = pgn;
+  state.gameIndex = gameIndex;
+  state.lastPlayerUsername = playerUsername || null;
   try { state.enginePool?.cancelAll(); } catch {}
   try { state.engine?.cancelAll(); } catch {}
 
-  // Cache local: se já temos essa análise salva, abre direto.
-  const cached = await getHistoryEntry(pgn);
-  if (cached) {
+  // Cache local: chave inclui o índice da partida (multi-PGN) e a depth da review.
+  // Só reusa cache quando for a 1ª partida do arquivo (histórico legado) e depth
+  // padrão — senão reanalisa com os parâmetros atuais.
+  const cacheKey = historyCacheKey(pgn, gameIndex, state.reviewDepth);
+  const cached = await getHistoryEntry(cacheKey);
+  if (cached?.analysis?.moves?.length) {
     state.analysis = cached.analysis;
     state.partialMoves = cached.analysis.moves.slice();
     state.partialHeaders = cached.analysis.headers;
     state.partialOpening = cached.analysis.opening;
     state.totalPlies = cached.analysis.moves.length;
-    // Auto-detecta orientação mesmo do cache (se tiver username)
+    state.availableGames = cached.availableGames || [];
+    state.gameIndex = cached.gameIndex != null ? cached.gameIndex : gameIndex;
+    renderMultiGamePicker(state.availableGames, state.gameIndex);
     autoDetectOrientation(cached.analysis.headers, playerUsername);
     showProgress(false);
     renderAll(true);
@@ -688,22 +921,27 @@ async function analyzePgnStreaming(pgn, playerUsername = null) {
     const r = await fetch("/api/pgn/parse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pgn }),
+      body: JSON.stringify({ pgn, game_index: gameIndex }),
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      alert("Erro no parse do PGN: " + (err.detail || r.statusText));
+      const detail = apiErrorDetail(err.detail, r.statusText || "erro");
+      showToast("Erro no parse do PGN: " + detail, "error");
       showProgress(false);
       return;
     }
     parsed = await r.json();
   } catch (e) {
-    alert("Erro ao falar com o backend: " + e.message);
+    showToast("Erro ao falar com o backend: " + e.message, "error");
     showProgress(false);
     return;
   }
 
   if (runId !== state.analysisRunId) return; // outra análise começou
+
+  state.availableGames = parsed.available_games || [];
+  state.gameIndex = parsed.game_index != null ? parsed.game_index : gameIndex;
+  renderMultiGamePicker(state.availableGames, state.gameIndex);
 
   // Render imediato dos headers e da abertura.
   state.partialHeaders = parsed.headers;
@@ -724,20 +962,17 @@ async function analyzePgnStreaming(pgn, playerUsername = null) {
     try {
       pool = await getEnginePool();
     } catch (e) {
-      alert("Falha ao carregar o Stockfish WASM: " + e.message);
+      showToast("Falha ao carregar o Stockfish WASM: " + e.message, "error");
       showProgress(false);
       return;
     }
     if (runId !== state.analysisRunId) return;
     pool.cancelAll(); // limpa qualquer batch anterior antes de começar
 
-    // A análise da partida usa depth menor (e roda em paralelo); o painel ao
-    // vivo é que usa a profundidade cheia escolhida no seletor.
-    // Depth 15: com o SF18 lite-single (bem mais rápido que o SF16) dá pra subir
-    // de 14 pra 15 ganhando precisão sem dobrar o tempo (16 fica ~2,2x mais lento
-    // e pesa em máquinas de 4 núcleos). Quem quiser mais rápido escolhe 14 no seletor.
-    const depthSel = parseInt(document.getElementById("engine-depth-sel").value, 10);
-    const depth = depthSel > 0 ? Math.min(depthSel, 15) : 15;
+    // Profundidade da REVIEW (classificação da partida) é independente da
+    // profundidade do painel ao vivo. Valor padrão 15; o usuário escolhe em
+    // "Review" no card da engine.
+    const depth = state.reviewDepth || 15;
     const result = await ChessReviewAnalysis.analyzeGame(
       parsed,
       pool,
@@ -765,16 +1000,72 @@ async function analyzePgnStreaming(pgn, playerUsername = null) {
     renderAll(false);
     // Persiste sem bloquear nem contaminar o caminho de sucesso: se o save
     // falhar, apenas loga (a análise em si já está na tela).
-    saveToHistory(pgn, result).catch((err) => console.warn("[history] falha ao salvar:", err));
+    saveToHistory(cacheKey, result, {
+      reviewDepth: depth,
+      gameIndex: state.gameIndex,
+      availableGames: state.availableGames,
+      sourcePgn: pgn,
+    }).catch((err) => console.warn("[history] falha ao salvar:", err));
   } catch (e) {
     console.error(e);
     if (runId === state.analysisRunId) {
-      alert("Erro durante análise: " + e.message);
+      showToast("Erro durante análise: " + e.message, "error");
       showProgress(false);
     }
   } finally {
     if (runId === state.analysisRunId) state.streaming = false;
   }
+}
+
+function historyCacheKey(pgn, gameIndex, reviewDepth) {
+  // Mantém compat: partida 0 + depth 15 usa o PGN puro (histórico antigo).
+  if ((gameIndex || 0) === 0 && (reviewDepth || 15) === 15) return pgn;
+  return `gi${gameIndex || 0}|d${reviewDepth || 15}|${pgn}`;
+}
+
+function hideMultiGamePicker() {
+  const box = document.getElementById("multi-game-picker");
+  if (!box) return;
+  box.style.display = "none";
+  box.hidden = true;
+  state.availableGames = [];
+}
+
+function renderMultiGamePicker(games, activeIndex) {
+  const box = document.getElementById("multi-game-picker");
+  const list = document.getElementById("multi-game-list");
+  const title = document.getElementById("multi-game-title");
+  if (!box || !list) return;
+  if (!games || games.length <= 1) {
+    box.style.display = "none";
+    box.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+  box.style.display = "block";
+  box.hidden = false;
+  if (title) {
+    title.textContent = `Este arquivo tem ${games.length} partidas. Analisando #${(activeIndex || 0) + 1}. Escolha outra:`;
+  }
+  list.innerHTML = "";
+  games.forEach((g) => {
+    const el = document.createElement("div");
+    el.className = "game-item" + (g.index === activeIndex ? " active" : "");
+    const meta = [g.event, g.date, g.result].filter(Boolean).join(" · ");
+    el.innerHTML = `
+      <div class="players">
+        <span>${escapeHtml(g.white)} <span class="result">${escapeHtml((g.result || "*").split("-")[0] || "")}</span></span>
+        <span>${escapeHtml(g.black)} <span class="result">${escapeHtml((g.result || "*").split("-")[1] || "")}</span></span>
+      </div>
+      <div class="meta">#${g.index + 1} · ${escapeHtml(meta)} · ${g.moves_count || "?"} lances</div>
+    `;
+    el.onclick = () => {
+      if (g.index === state.gameIndex && state.analysis && !state.streaming) return;
+      const pgn = state.currentPgn || document.getElementById("pgn-input").value;
+      analyzePgnStreaming(pgn, state.lastPlayerUsername, { gameIndex: g.index });
+    };
+    list.appendChild(el);
+  });
 }
 
 function resetForNewAnalysis() {
@@ -1573,17 +1864,21 @@ function pgnHash(pgn) {
   return h.toString(16);
 }
 
-async function getHistoryEntry(pgn) {
-  return HistoryStore.get(pgnHash(pgn));
+async function getHistoryEntry(pgnOrKey) {
+  return HistoryStore.get(pgnHash(pgnOrKey));
 }
 
-async function saveToHistory(pgn, analysis) {
-  const id = pgnHash(pgn);
+async function saveToHistory(pgnOrKey, analysis, meta = {}) {
+  const id = pgnHash(pgnOrKey);
   const h = analysis.headers || {};
+  const sourcePgn = meta.sourcePgn || pgnOrKey;
   await HistoryStore.put({
     id,
-    pgn,
+    pgn: sourcePgn,
     analysis,
+    reviewDepth: meta.reviewDepth,
+    gameIndex: meta.gameIndex,
+    availableGames: meta.availableGames || [],
     saved_at: new Date().toISOString(),
     summary: {
       white: h.White || "Brancas",
@@ -1598,6 +1893,127 @@ async function saveToHistory(pgn, analysis) {
   await renderHistory();
 }
 
+// ============================================================
+// Export PGN anotado + compartilhar link
+// ============================================================
+
+/** Formata centipawns (POV de quem moveu) como tag [%eval] POV brancas. */
+function formatEvalTag(move) {
+  if (move.eval_after_cp == null || !isFinite(move.eval_after_cp)) return null;
+  const fromWhite = move.color === "white" ? move.eval_after_cp : -move.eval_after_cp;
+  const MATE = 10000;
+  if (Math.abs(fromWhite) >= MATE - 1000) {
+    const dist = Math.max(1, MATE - Math.abs(fromWhite));
+    return fromWhite > 0 ? `#${dist}` : `#-${dist}`;
+  }
+  const pawns = fromWhite / 100;
+  const rounded = Math.round(pawns * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+}
+
+function buildAnnotatedPgn(analysis) {
+  if (!analysis || !analysis.moves?.length) {
+    throw new Error("Nenhuma análise para exportar.");
+  }
+  const h = analysis.headers || {};
+  const tags = [];
+  const order = [
+    "Event", "Site", "Date", "Round", "White", "Black", "Result",
+    "WhiteElo", "BlackElo", "TimeControl", "ECO", "Opening",
+  ];
+  const seen = new Set();
+  for (const k of order) {
+    if (h[k] != null && h[k] !== "") {
+      tags.push(`[${k} "${String(h[k]).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`);
+      seen.add(k);
+    }
+  }
+  for (const [k, v] of Object.entries(h)) {
+    if (seen.has(k) || v == null || v === "") continue;
+    tags.push(`[${k} "${String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`);
+  }
+  // Metadados da review (não-padrão, mas úteis).
+  tags.push(`[Annotator "Chess Review"]`);
+  if (analysis.accuracy_white != null) {
+    tags.push(`[WhiteAccuracy "${analysis.accuracy_white}"]`);
+  }
+  if (analysis.accuracy_black != null) {
+    tags.push(`[BlackAccuracy "${analysis.accuracy_black}"]`);
+  }
+  if (analysis.opening?.eco && !h.ECO) {
+    tags.push(`[ECO "${analysis.opening.eco}"]`);
+  }
+  if (analysis.opening?.name && !h.Opening) {
+    tags.push(`[Opening "${String(analysis.opening.name).replace(/"/g, '\\"')}"]`);
+  }
+
+  // Emite em sequência completa: "1. e4 {…} e5 {…} 2. Nf3 …"
+  const parts = [];
+  for (const m of analysis.moves) {
+    let token = m.color === "white" ? `${m.move_number}. ${m.san}` : m.san;
+
+    const evalStr = formatEvalTag(m);
+    const cls = CLASS_LABELS[m.classification] || m.classification || "";
+    const commentBits = [];
+    if (evalStr != null) commentBits.push(`[%eval ${evalStr}]`);
+    if (cls) commentBits.push(cls);
+    if (m.comment) {
+      // Comentário humano sem chaves quebrando o PGN.
+      const clean = String(m.comment).replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
+      if (clean) commentBits.push(clean);
+    }
+    if (commentBits.length) {
+      token += ` { ${commentBits.join(" ")} }`;
+    }
+    parts.push(token);
+  }
+
+  const result = h.Result || "*";
+  const body = parts.join(" ") + (parts.length ? " " : "") + result;
+  return tags.join("\n") + "\n\n" + body + "\n";
+}
+
+function exportAnnotatedPgn() {
+  const a = state.analysis;
+  if (!a) {
+    showToast("Analise uma partida antes de exportar.", "error");
+    return;
+  }
+  const pgn = buildAnnotatedPgn(a);
+  const white = (a.headers?.White || "white").replace(/\s+/g, "_");
+  const black = (a.headers?.Black || "black").replace(/\s+/g, "_");
+  const filename = `chess-review_${white}_vs_${black}.pgn`;
+  const blob = new Blob([pgn], { type: "application/x-chess-pgn;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("PGN exportado com evals e classificações.", "success", 3000);
+}
+
+async function shareCurrentPgnLink() {
+  const pgn = state.currentPgn || document.getElementById("pgn-input")?.value?.trim();
+  if (!pgn) {
+    showToast("Nenhuma partida carregada para compartilhar.", "error");
+    return;
+  }
+  const hash = await encodePgnToHash(pgn);
+  const url = `${location.origin}${location.pathname}#${hash}`;
+  // Atualiza a URL atual sem recarregar.
+  try { history.replaceState(null, "", `#${hash}`); } catch {}
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(url);
+    showToast("Link copiado. Quem abrir analisa a mesma partida.", "success", 3500);
+  } else {
+    // Fallback: prompt de cópia manual.
+    window.prompt("Copie o link:", url);
+  }
+}
+
 async function renderHistory() {
   const list = await HistoryStore.getAll();
   const container = document.getElementById("history-list");
@@ -1609,21 +2025,25 @@ async function renderHistory() {
   for (const e of list) {
     const el = document.createElement("div");
     el.className = "game-item";
+    const resParts = String(e.summary.result || "*").split("-");
     el.innerHTML = `
       <div class="players">
         <span>${escapeHtml(e.summary.white)}
-          <span class="result">${e.summary.result.split("-")[0]}</span>
+          <span class="result">${escapeHtml(resParts[0] || "")}</span>
         </span>
         <span>${escapeHtml(e.summary.black)}
-          <span class="result">${e.summary.result.split("-")[1]}</span>
+          <span class="result">${escapeHtml(resParts[1] || "")}</span>
         </span>
       </div>
-      <div class="meta">${escapeHtml(e.summary.opening || "")} · ${e.summary.accuracy_white}/${e.summary.accuracy_black}</div>
+      <div class="meta">${escapeHtml(e.summary.opening || "")} · ${escapeHtml(String(e.summary.accuracy_white))}/${escapeHtml(String(e.summary.accuracy_black))}</div>
     `;
     el.onclick = () => {
       document.getElementById("pgn-input").value = e.pgn;
       document.querySelector(".tab-btn[data-tab='pgn']").click();
-      analyzePgnStreaming(e.pgn); // vai pegar do cache via getHistoryEntry
+      if (e.reviewDepth) state.reviewDepth = e.reviewDepth;
+      const rSel = document.getElementById("review-depth-sel");
+      if (rSel && e.reviewDepth) rSel.value = String(e.reviewDepth);
+      analyzePgnStreaming(e.pgn, null, { gameIndex: e.gameIndex || 0 });
     };
     container.appendChild(el);
   }

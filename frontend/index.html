@@ -128,6 +128,11 @@
             </label>
             <button id="analyze-pgn-btn" class="primary">Analisar</button>
           </div>
+          <!-- Lista de partidas quando o PGN tem mais de uma -->
+          <div id="multi-game-picker" class="multi-game-picker" style="display:none;" hidden>
+            <p class="muted multi-game-title" id="multi-game-title">Este arquivo tem várias partidas. Escolha uma:</p>
+            <div class="games-list" id="multi-game-list"></div>
+          </div>
         </div>
 
         <div class="tab-panel active" id="tab-chesscom">
@@ -158,6 +163,10 @@
         <h2>Resumo</h2>
         <div id="players-summary"></div>
         <div id="counts-summary"></div>
+        <div class="summary-actions" id="summary-actions">
+          <button type="button" id="btn-export-pgn" class="secondary" title="Baixar PGN com avaliações e classificações">Exportar PGN</button>
+          <button type="button" id="btn-share-link" class="secondary" title="Copiar link compartilhável com a partida">Copiar link</button>
+        </div>
       </section>
 
       <section class="card" id="coach-card" style="display:none;">
@@ -188,11 +197,25 @@
       <div class="player-bar" id="player-bottom" style="display:none;"></div>
 
       <div class="controls">
-        <button id="btn-start" title="Início">⏮</button>
-        <button id="btn-prev" title="Anterior">◀</button>
-        <button id="btn-flip" title="Virar tabuleiro">⇅</button>
-        <button id="btn-next" title="Próximo">▶</button>
-        <button id="btn-end" title="Fim">⏭</button>
+        <button id="btn-start" type="button" title="Início" aria-label="Ir ao início da partida">⏮</button>
+        <button id="btn-prev" type="button" title="Anterior" aria-label="Lance anterior">◀</button>
+        <button id="btn-flip" type="button" title="Virar tabuleiro" aria-label="Virar tabuleiro">⇅</button>
+        <button id="btn-next" type="button" title="Próximo" aria-label="Próximo lance">▶</button>
+        <button id="btn-end" type="button" title="Fim" aria-label="Ir ao fim da partida">⏭</button>
+      </div>
+
+      <!-- Overlay de promoção (modo exploração) -->
+      <div id="promo-dialog" class="promo-dialog" hidden aria-hidden="true">
+        <div class="promo-dialog-panel" role="dialog" aria-modal="true" aria-label="Escolher peça de promoção">
+          <p class="promo-dialog-title">Promover peão</p>
+          <div class="promo-dialog-pieces">
+            <button type="button" data-piece="q" title="Rainha" aria-label="Rainha">♕</button>
+            <button type="button" data-piece="r" title="Torre" aria-label="Torre">♖</button>
+            <button type="button" data-piece="b" title="Bispo" aria-label="Bispo">♗</button>
+            <button type="button" data-piece="n" title="Cavalo" aria-label="Cavalo">♘</button>
+          </div>
+          <button type="button" class="promo-cancel" id="promo-cancel">Cancelar</button>
+        </div>
       </div>
 
       <!-- Banner que aparece em modo exploração -->
@@ -224,21 +247,33 @@
         <div class="live-engine-lines" id="engine-lines"></div>
         <div class="live-engine-controls">
           <label class="small">MultiPV:
-            <select id="engine-multipv">
+            <select id="engine-multipv" aria-label="Linhas da engine ao vivo">
               <option value="1">1</option>
               <option value="2">2</option>
               <option value="3" selected>3</option>
             </select>
           </label>
-          <label class="small">Profundidade:
-            <select id="engine-depth-sel">
+          <label class="small">Ao vivo:
+            <select id="engine-depth-sel" aria-label="Profundidade da engine ao vivo">
               <option value="14">14</option>
               <option value="18">18</option>
               <option value="22" selected>22</option>
               <option value="0">infinita</option>
             </select>
           </label>
+          <label class="small">Review:
+            <select id="review-depth-sel" aria-label="Profundidade da análise da partida">
+              <option value="12">12 (rápida)</option>
+              <option value="14">14</option>
+              <option value="15" selected>15 (padrão)</option>
+              <option value="16">16 (mais lenta)</option>
+            </select>
+          </label>
         </div>
+        <p class="engine-depth-hint muted">
+          <strong>Review</strong> classifica os lances da partida.
+          <strong>Ao vivo</strong> analisa a posição atual / variantes.
+        </p>
       </section>
 
       <div class="chart-wrapper" style="display:none;">
@@ -277,6 +312,9 @@
       <a href="https://github.com/tuliopd17/chess-review" target="_blank" rel="noopener">repo no GitHub</a>
     </p>
   </footer>
+
+  <!-- Toasts de feedback (erros, sucesso) — preenchido pelo app.js -->
+  <div id="toast-root" class="toast-root" aria-live="polite" aria-relevant="additions"></div>
 
   <!-- defer: baixam em paralelo durante o parse, executam em ordem de documento
        depois do parse (sem bloquear o primeiro paint). app.js vem ANTES do módulo

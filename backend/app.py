@@ -18,13 +18,14 @@ from typing import Optional
 import chess
 import chess.pgn
 from io import StringIO
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import importers
 from . import openings
+from . import rate_limit
 from . import sf_assets
 
 
@@ -77,6 +78,100 @@ async def _startup_warmup():
 
 class PGNRequest(BaseModel):
     pgn: str
+    # Índice da partida quando o PGN tem várias (0 = primeira).
+    game_index: int = Field(default=0, ge=0, le=500)
+
+
+def _read_all_games(pgn_text: str) -> list:
+    """Lê todas as partidas de um texto PGN (arquivo multi-game)."""
+    games = []
+    sio = StringIO(pgn_text)
+    while True:
+        try:
+            game = chess.pgn.read_game(sio)
+        except Exception as e:
+            raise HTTPException(400, f"PGN inválido: {e}")
+        if game is None:
+            break
+        games.append(game)
+    return games
+
+
+def _game_summary(game, index: int) -> dict:
+    h = game.headers
+    n_moves = sum(1 for _ in game.mainline_moves())
+    return {
+        "index": index,
+        "white": h.get("White", "?"),
+        "black": h.get("Black", "?"),
+        "result": h.get("Result", "*"),
+        "event": h.get("Event", ""),
+        "date": h.get("Date", h.get("UTCDate", "")),
+        "round": h.get("Round", ""),
+        "moves_count": n_moves,
+    }
+
+
+def _parse_game(game) -> dict:
+    """Extrai headers, moves (com FENs) e abertura de um game python-chess."""
+    headers = dict(game.headers)
+    board = game.board()
+    moves_data = []
+    uci_list = []
+
+    for ply, mv in enumerate(list(game.mainline_moves()), start=1):
+        mover = board.turn
+        fen_before = board.fen()
+        san = board.san(mv)
+        uci = mv.uci()
+        from_sq = chess.square_name(mv.from_square)
+        to_sq = chess.square_name(mv.to_square)
+
+        is_capture = board.is_capture(mv)
+        if is_capture:
+            if board.is_en_passant(mv):
+                captured_piece = "p"
+            else:
+                cap = board.piece_at(mv.to_square)
+                captured_piece = cap.symbol().lower() if cap else None
+        else:
+            captured_piece = None
+
+        board.push(mv)
+        fen_after = board.fen()
+        is_check = board.is_check()
+        is_checkmate = board.is_checkmate()
+
+        uci_list.append(uci)
+        moves_data.append({
+            "ply": ply,
+            "move_number": (ply + 1) // 2,
+            "color": "white" if mover == chess.WHITE else "black",
+            "san": san,
+            "uci": uci,
+            "from": from_sq,
+            "to": to_sq,
+            "fen_before": fen_before,
+            "fen_after": fen_after,
+            "is_capture": is_capture,
+            "is_check": is_check,
+            "is_checkmate": is_checkmate,
+            "captured_piece": captured_piece,
+        })
+
+    op = openings.detect_opening_for_game(uci_list)
+    for i, m in enumerate(moves_data):
+        m["in_book"] = op["in_book"][i] if i < len(op["in_book"]) else False
+
+    return {
+        "headers": headers,
+        "moves": moves_data,
+        "opening": {
+            "eco": op["eco"],
+            "name": op["name"],
+            "last_book_ply": op["last_book_ply"],
+        },
+    }
 
 
 # ===========================================================================
@@ -142,76 +237,32 @@ async def parse_pgn_route(req: PGNRequest):
                           fen_before, fen_after, is_capture, is_check, is_checkmate,
                           captured_piece, in_book}
       - opening: {eco, name, last_book_ply}
+      - game_index / games_total / available_games (arquivo multi-partida)
+
     O frontend depois pega cada FEN e manda o Stockfish WASM analisar.
     """
     if not req.pgn or not req.pgn.strip():
         raise HTTPException(400, "PGN vazio")
 
-    try:
-        game = chess.pgn.read_game(StringIO(req.pgn))
-    except Exception as e:
-        raise HTTPException(400, f"PGN inválido: {e}")
-    if game is None:
+    games = _read_all_games(req.pgn)
+    if not games:
         raise HTTPException(400, "PGN vazio ou inválido")
 
-    headers = dict(game.headers)
-    board = game.board()
-    moves_data = []
-    uci_list = []
+    if req.game_index >= len(games):
+        raise HTTPException(
+            400,
+            f"Partida #{req.game_index + 1} não existe (arquivo tem {len(games)} partida(s))",
+        )
 
-    for ply, mv in enumerate(list(game.mainline_moves()), start=1):
-        mover = board.turn
-        fen_before = board.fen()
-        san = board.san(mv)
-        uci = mv.uci()
-        from_sq = chess.square_name(mv.from_square)
-        to_sq = chess.square_name(mv.to_square)
-
-        is_capture = board.is_capture(mv)
-        if is_capture:
-            if board.is_en_passant(mv):
-                captured_piece = "p"
-            else:
-                cap = board.piece_at(mv.to_square)
-                captured_piece = cap.symbol().lower() if cap else None
-        else:
-            captured_piece = None
-
-        board.push(mv)
-        fen_after = board.fen()
-        is_check = board.is_check()
-        is_checkmate = board.is_checkmate()
-
-        uci_list.append(uci)
-        moves_data.append({
-            "ply": ply,
-            "move_number": (ply + 1) // 2,
-            "color": "white" if mover == chess.WHITE else "black",
-            "san": san,
-            "uci": uci,
-            "from": from_sq,
-            "to": to_sq,
-            "fen_before": fen_before,
-            "fen_after": fen_after,
-            "is_capture": is_capture,
-            "is_check": is_check,
-            "is_checkmate": is_checkmate,
-            "captured_piece": captured_piece,
-        })
-
-    # Detecta abertura.
-    op = openings.detect_opening_for_game(uci_list)
-    for i, m in enumerate(moves_data):
-        m["in_book"] = op["in_book"][i] if i < len(op["in_book"]) else False
+    game = games[req.game_index]
+    parsed = _parse_game(game)
+    available = [_game_summary(g, i) for i, g in enumerate(games)] if len(games) > 1 else []
 
     return {
-        "headers": headers,
-        "moves": moves_data,
-        "opening": {
-            "eco": op["eco"],
-            "name": op["name"],
-            "last_book_ply": op["last_book_ply"],
-        },
+        **parsed,
+        "game_index": req.game_index,
+        "games_total": len(games),
+        "available_games": available,
     }
 
 
@@ -220,10 +271,27 @@ async def parse_pgn_route(req: PGNRequest):
 # ===========================================================================
 
 @app.get("/api/chesscom/{username}")
-async def chesscom_games(username: str, limit: int = 20):
+async def chesscom_games(username: str, request: Request, limit: int = 20):
+    try:
+        rate_limit.check_rate_limit(rate_limit.client_key(request))
+    except rate_limit.RateLimitExceeded as e:
+        raise HTTPException(
+            status_code=429,
+            detail=str(e),
+            headers={"Retry-After": str(e.retry_after)},
+        )
+
+    limit = max(1, min(int(limit or 20), 50))
+    cache_key = f"chesscom:{username.strip().lower()}:{limit}"
+    cached = rate_limit.cache_get(cache_key)
+    if cached is not None:
+        return {**cached, "cached": True}
+
     try:
         games = await importers.fetch_chesscom_recent(username, limit=limit)
-        return {"games": games}
+        payload = {"games": games}
+        rate_limit.cache_set(cache_key, payload)
+        return {**payload, "cached": False}
     except ValueError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
@@ -231,10 +299,27 @@ async def chesscom_games(username: str, limit: int = 20):
 
 
 @app.get("/api/lichess/{username}")
-async def lichess_games(username: str, limit: int = 20):
+async def lichess_games(username: str, request: Request, limit: int = 20):
+    try:
+        rate_limit.check_rate_limit(rate_limit.client_key(request))
+    except rate_limit.RateLimitExceeded as e:
+        raise HTTPException(
+            status_code=429,
+            detail=str(e),
+            headers={"Retry-After": str(e.retry_after)},
+        )
+
+    limit = max(1, min(int(limit or 20), 50))
+    cache_key = f"lichess:{username.strip().lower()}:{limit}"
+    cached = rate_limit.cache_get(cache_key)
+    if cached is not None:
+        return {**cached, "cached": True}
+
     try:
         games = await importers.fetch_lichess_recent(username, limit=limit)
-        return {"games": games}
+        payload = {"games": games}
+        rate_limit.cache_set(cache_key, payload)
+        return {**payload, "cached": False}
     except ValueError as e:
         raise HTTPException(404, str(e))
     except Exception as e:

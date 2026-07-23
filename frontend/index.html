@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Chess Review — Análise grátis de partidas de xadrez</title>
   <meta name="description" content="Revise suas partidas de xadrez de graça. Importe PGN, Chess.com ou Lichess e veja a classificação de cada lance (Brilhante, Erro, Capivarada) no estilo Game Review." />
   <meta name="keywords" content="análise de xadrez, review de partida xadrez, PGN online, chess review brasil, classificação de lances, game review grátis, stockfish online" />
@@ -30,6 +30,8 @@
   <!-- Ícone da aba (logo sem o nome) -->
   <link rel="icon" type="image/png" href="/static/images/logo-without-name.png" />
   <link rel="apple-touch-icon" href="/static/images/logo-without-name.png" />
+  <!-- PWA: instalável na tela inicial (standalone, tema escuro) -->
+  <link rel="manifest" href="/static/manifest.webmanifest" />
 
   <!-- JSON-LD: schema.org WebApplication + Organization (rich results no Google) -->
   <script type="application/ld+json">
@@ -109,9 +111,18 @@
   <main>
     <!-- Coluna esquerda: import + histórico -->
     <aside class="sidebar">
-      <section class="card" id="import-card">
-        <h2>Importar partida</h2>
+      <section class="card card-collapsible" id="import-card">
+        <h2 class="card-toggle-title">
+          <button type="button" class="card-toggle" id="import-toggle" aria-expanded="true" aria-controls="import-body">
+            <span>Importar partida</span>
+            <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+        </h2>
 
+        <div class="card-body" id="import-body">
         <div class="tabs">
           <button class="tab-btn active" data-tab="chesscom">chess.com</button>
           <button class="tab-btn" data-tab="lichess">lichess</button>
@@ -152,6 +163,7 @@
           <div class="games-list" id="history-list"></div>
           <button id="clear-history-btn" class="danger" style="margin-top:8px;">Limpar histórico</button>
         </div>
+        </div><!-- /#import-body -->
       </section>
 
       <section class="card" id="opening-card" style="display:none;">
@@ -231,14 +243,23 @@
       </div>
 
       <!-- Painel da engine ao vivo (sempre visível quando engine WASM tá pronta) -->
-      <section class="card live-engine" id="live-engine-card">
+      <section class="card live-engine card-collapsible" id="live-engine-card">
         <div class="live-engine-head">
-          <h2>Engine ao vivo</h2>
+          <h2 class="card-toggle-title">
+            <button type="button" class="card-toggle" id="engine-toggle" aria-expanded="true" aria-controls="engine-body">
+              <span>Engine ao vivo</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          </h2>
           <span id="engine-status" class="engine-status loading" role="status" aria-live="polite">
             <span class="engine-status-dot"></span>
             <span class="engine-status-text">carregando engine…</span>
           </span>
         </div>
+        <div class="card-body" id="engine-body">
         <div class="live-engine-meta" id="engine-meta">
           <span id="engine-depth">depth —</span>
           <span id="engine-nps">— knps</span>
@@ -274,6 +295,7 @@
           <strong>Review</strong> classifica os lances da partida.
           <strong>Ao vivo</strong> analisa a posição atual / variantes.
         </p>
+        </div><!-- /#engine-body -->
       </section>
 
       <div class="chart-wrapper" style="display:none;">
@@ -315,6 +337,16 @@
 
   <!-- Toasts de feedback (erros, sucesso) — preenchido pelo app.js -->
   <div id="toast-root" class="toast-root" aria-live="polite" aria-relevant="additions"></div>
+
+  <!-- Barra de navegação fixa no mobile: aparece quando os controles sob o
+       tabuleiro saem da tela (ex.: lendo a lista de lances / coach). -->
+  <nav id="mobile-nav" class="mobile-nav" aria-label="Navegação de lances">
+    <button id="mnav-start" type="button" title="Início" aria-label="Ir ao início da partida">⏮</button>
+    <button id="mnav-prev" type="button" title="Anterior" aria-label="Lance anterior">◀</button>
+    <button id="mnav-label" type="button" class="mnav-label" title="Ver no tabuleiro" aria-label="Ver posição atual no tabuleiro">Início</button>
+    <button id="mnav-next" type="button" title="Próximo" aria-label="Próximo lance">▶</button>
+    <button id="mnav-end" type="button" title="Fim" aria-label="Ir ao fim da partida">⏭</button>
+  </nav>
 
   <!-- defer: baixam em paralelo durante o parse, executam em ordem de documento
        depois do parse (sem bloquear o primeiro paint). app.js vem ANTES do módulo

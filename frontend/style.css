@@ -38,19 +38,12 @@
 
 html { -webkit-text-size-adjust: 100%; }
 
-html {
-  /* Evita o pull-to-refresh acidental no Android descartar a análise em curso
-     (o scroll normal e o pinch-zoom continuam funcionando). */
-  overscroll-behavior-y: contain;
-}
-
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  min-height: 100dvh;      /* barra de endereço dinâmica no mobile */
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
@@ -156,41 +149,6 @@ main {
   margin: 0 0 12px;
   font-size: 1.1rem;
   color: var(--accent);
-}
-
-/* ===== Cards colapsáveis (importar / engine ao vivo) =====
-   O título vira um botão que mostra/esconde o .card-body. No mobile isso
-   encurta o caminho até o tabuleiro e a lista de lances. */
-.card-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 0;
-  background: none;
-  border: none;
-  font: inherit;
-  font-weight: inherit;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-  -webkit-tap-highlight-color: transparent;
-}
-.card-toggle:hover { background: none; }
-.card-toggle:active { transform: none; }
-.card-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
-.card-toggle .chevron {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-  transition: transform 0.15s ease;
-}
-.card-collapsible.collapsed .card-toggle .chevron { transform: rotate(-90deg); }
-.card-collapsible.collapsed .card-body { display: none; }
-.card-collapsible.collapsed h2.card-toggle-title { margin-bottom: 0; }
-/* Alvo de toque ≥44px em telas de toque, sem engordar o card no desktop. */
-@media (pointer: coarse) {
-  .card-toggle { min-height: 44px; }
 }
 
 .tabs {
@@ -867,60 +825,6 @@ footer a { color: var(--accent); }
 }
 .engine-depth-hint strong { color: var(--text); font-weight: 600; }
 
-/* ===== Barra de navegação fixa (mobile) =====
-   Só existe no layout empilhado (≤1100px) e só quando o app.js liga a classe
-   .visible (há partida carregada E os controles do tabuleiro saíram da tela). */
-.mobile-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 8000;
-  display: none;
-  gap: 6px;
-  padding: 8px 10px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom));
-  background: rgba(39, 37, 34, 0.97);       /* --bg-card com leve translucidez */
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-}
-.mobile-nav button {
-  flex: 1 1 auto;
-  min-height: 44px;
-  font-size: 1.05rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-tap-highlight-color: transparent;
-}
-.mobile-nav button:active { transform: none; }
-.mobile-nav button:focus { outline: none; }
-.mobile-nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Rótulo central: lance atual + ícone da classificação. Toca = volta pro tabuleiro. */
-.mobile-nav .mnav-label {
-  flex: 2 1 auto;
-  min-width: 0;
-  gap: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: var(--bg-card);
-}
-.mobile-nav .mnav-label .cls-icon { display: inline-flex; flex: 0 0 auto; }
-
-@media (max-width: 1100px) {
-  .mobile-nav.visible { display: flex; }
-  /* Abre espaço no fim da página pro conteúdo não ficar atrás da barra. */
-  body.has-mobile-nav main { padding-bottom: 84px; }
-  body.has-mobile-nav .toast-root {
-    bottom: calc(76px + env(safe-area-inset-bottom));
-  }
-}
-
 /* ===== Toasts ===== */
 .toast-root {
   position: fixed;
@@ -1125,33 +1029,21 @@ button.secondary:focus-visible {
   #summary-card  { order: 5; }
   #coach-card    { order: 6; }
 
-  /* No empilhado, tabuleiro e painéis podem ocupar um pouco mais — mas nunca
-     mais alto que a viewport (tablet paisagem / celular deitado ficavam com um
-     tabuleiro maior que a tela). O clamp segura entre 280px e 640px. */
-  :root { --panel-max: clamp(280px, calc(100vh - 190px), 640px); }
-  :root { --panel-max: clamp(280px, calc(100dvh - 190px), 640px); }
+  /* No empilhado, tabuleiro e painéis podem ocupar um pouco mais. */
+  :root { --panel-max: 640px; }
   .board-section { align-items: center; }
 }
 
 /* Celular: aperta espaçamentos, esconde a tagline, alvos de toque maiores. */
 @media (max-width: 600px) {
-  header { padding: 8px 16px; }
-  header h1.brand img { height: 52px; }
-  /* A tagline dobrava a altura do header no celular; o valor dela é baixo
-     comparado ao espaço que rouba do tabuleiro. */
-  .tagline { display: none; }
+  header { padding: 10px 16px; }
+  header h1.brand img { height: 56px; }
+  .tagline { font-size: 0.8rem; }
 
   main { padding: 12px; gap: 12px; }
   .card { padding: 13px; }
 
-  .tab-btn { padding: 12px 10px; font-size: 0.9rem; min-height: 44px; }
-
-  /* Alvos de toque maiores nas listas clicáveis (lances, críticos, engine). */
-  .move-cell { padding: 9px 10px; font-size: 0.95rem; }
-  .move-pair { grid-template-columns: 32px 1fr 1fr; }
-  #coach-critical .critical-item { padding: 10px 8px; }
-  .engine-line { padding: 8px 6px; }
-  .game-item { padding: 11px 10px; }
+  .tab-btn { padding: 10px 10px; font-size: 0.9rem; }
 
   /* No celular o card de importar vem ANTES do tabuleiro — uma caixa de PGN
      grande empurra o board pra baixo. Encolhe aqui (continua arrastável); no

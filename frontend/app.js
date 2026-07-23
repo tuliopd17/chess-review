@@ -32,10 +32,6 @@ const state = {
   engineMultiPV: 3,
   engineDepth: 22,
   reviewDepth: 15,         // profundidade da classificação da partida
-  engineCardOpen: null,    // preferência do card "Engine ao vivo" (null = padrão por breakpoint)
-
-  // ----- Mobile -----
-  controlsOnScreen: true,  // controles sob o tabuleiro estão visíveis? (IntersectionObserver)
 
   // ----- Pool de engines (análise da partida em paralelo) -----
   enginePool: null,        // EnginePool (criado sob demanda na 1ª análise)
@@ -98,12 +94,8 @@ function bootApp() {
   initBrandHome();
   initPromoDialog();
   initSummaryActions();
-  initCollapsibles();
   loadFromHash();
 }
-
-// Breakpoint do layout empilhado (mesmo valor do @media no style.css).
-const mqMobile = window.matchMedia("(max-width: 1100px)");
 
 // ============================================================
 // Preferências locais (usernames, depths)
@@ -122,7 +114,6 @@ function loadPrefs() {
   if (p.engineMultiPV) state.engineMultiPV = p.engineMultiPV;
   if (p.engineDepth != null) state.engineDepth = p.engineDepth;
   if (p.reviewDepth) state.reviewDepth = p.reviewDepth;
-  if (typeof p.engineCardOpen === "boolean") state.engineCardOpen = p.engineCardOpen;
 
   const mpv = document.getElementById("engine-multipv");
   const dSel = document.getElementById("engine-depth-sel");
@@ -140,7 +131,6 @@ function savePrefs() {
     engineDepth: state.engineDepth,
     reviewDepth: state.reviewDepth,
   };
-  if (state.engineCardOpen != null) p.engineCardOpen = state.engineCardOpen;
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {}
 }
 
@@ -191,46 +181,6 @@ function initBrandHome() {
     window.location.assign("/");
   });
 }
-/* ===== Cards colapsáveis (importar / engine ao vivo) ===== */
-
-function setCardCollapsed(cardId, collapsed) {
-  const card = document.getElementById(cardId);
-  if (!card) return;
-  card.classList.toggle("collapsed", collapsed);
-  const btn = card.querySelector(".card-toggle");
-  if (btn) btn.setAttribute("aria-expanded", String(!collapsed));
-}
-
-function initCollapsibles() {
-  document.getElementById("import-toggle")?.addEventListener("click", () => {
-    const card = document.getElementById("import-card");
-    setCardCollapsed("import-card", !card.classList.contains("collapsed"));
-  });
-  document.getElementById("engine-toggle")?.addEventListener("click", () => {
-    const card = document.getElementById("live-engine-card");
-    const collapsed = !card.classList.contains("collapsed");
-    setCardCollapsed("live-engine-card", collapsed);
-    state.engineCardOpen = !collapsed;
-    savePrefs();
-  });
-  // Engine ao vivo: aberta no desktop, fechada por padrão no mobile (o chip de
-  // status continua visível). Preferência salva do usuário vence o padrão.
-  const engineOpen = state.engineCardOpen != null ? state.engineCardOpen : !mqMobile.matches;
-  setCardCollapsed("live-engine-card", !engineOpen);
-}
-
-// No mobile, ao iniciar/reabrir uma análise: recolhe o card de importar (que
-// empurra o tabuleiro pra baixo) e rola até o tabuleiro. No desktop é no-op.
-function mobileFocusBoard() {
-  if (!mqMobile.matches) return;
-  setCardCollapsed("import-card", true);
-  // 2 frames: espera o reflow do colapso pra rolar até a posição certa.
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.querySelector(".board-section")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }));
-}
-
 document.addEventListener("crBoardReady", bootApp);
 window.addEventListener("DOMContentLoaded", () => {
   // se cm-chessboard demorar, ainda inicializamos o resto após 800ms
@@ -493,28 +443,6 @@ function initControls() {
   bindNav("btn-next",  navActions.next);
   bindNav("btn-flip",  navActions.flip);
 
-  // Barra de navegação fixa do mobile — mesmos handlers dos controles do board.
-  bindNav("mnav-start", navActions.start);
-  bindNav("mnav-prev",  navActions.prev);
-  bindNav("mnav-next",  navActions.next);
-  bindNav("mnav-end",   navActions.end);
-  // Tocar no rótulo central volta pro tabuleiro (a barra some quando os
-  // controles originais reaparecem na tela).
-  document.getElementById("mnav-label")?.addEventListener("click", () => {
-    document.querySelector(".board-section")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-  // A barra aparece quando os controles sob o tabuleiro saem da viewport.
-  const controlsEl = document.querySelector(".controls");
-  if (controlsEl && "IntersectionObserver" in window) {
-    new IntersectionObserver((entries) => {
-      state.controlsOnScreen = entries[0].isIntersecting;
-      updateMobileNav();
-    }, { threshold: 0 }).observe(controlsEl);
-  } else {
-    state.controlsOnScreen = false; // sem IO: mostra sempre que houver partida
-  }
-
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
     if (e.key === "ArrowLeft")  navActions.prev();
@@ -523,29 +451,6 @@ function initControls() {
     if (e.key === "End")        navActions.end();
     if (e.key === "f" || e.key === "F") navActions.flip();
   });
-}
-
-// Sincroniza a barra fixa do mobile: visibilidade (partida carregada + controles
-// fora da tela) e rótulo central (lance atual + ícone da classificação).
-function updateMobileNav() {
-  const nav = document.getElementById("mobile-nav");
-  if (!nav) return;
-  const show = currentMoves().length > 0 && !state.controlsOnScreen;
-  nav.classList.toggle("visible", show);
-  document.body.classList.toggle("has-mobile-nav", show);
-  if (!show) return;
-  const label = document.getElementById("mnav-label");
-  if (!label) return;
-  const moves = currentMoves();
-  const m = state.currentPly > 0 ? moves[state.currentPly - 1] : null;
-  if (!m) {
-    label.textContent = "Início";
-    return;
-  }
-  const icon = (CLASS_ICONS[m.classification] || (() => ""))(14);
-  label.innerHTML =
-    `<span class="cls-icon">${icon}</span>` +
-    `${m.move_number}${m.color === "white" ? "." : "…"} ${escapeHtml(m.san)}`;
 }
 
 function initImportButtons() {
@@ -1004,13 +909,11 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     autoDetectOrientation(cached.analysis.headers, playerUsername);
     showProgress(false);
     renderAll(true);
-    mobileFocusBoard();
     return;
   }
 
   resetForNewAnalysis();
   showProgress(true, 0, 0);
-  mobileFocusBoard();
 
   // 1. Backend faz o parse do PGN e devolve a lista de lances + FENs + abertura.
   let parsed;
@@ -1198,7 +1101,6 @@ function showProgress(visible, current = 0, total = 0, label = "") {
     fill.style.width = pct + "%";
     txt.textContent = label ? `${label} — ${current} / ${total}` : `${current} / ${total}`;
   }
-  updateMobileNav(); // lances vão chegando durante a análise — barra acompanha
 }
 
 // ============================================================
@@ -1749,7 +1651,6 @@ function goToPly(ply) {
 
   updateEvalBar(ply);
   renderBoardOverlays();
-  updateMobileNav();
 
   // Dispara análise ao vivo da posição atual (se engine WASM tá pronta E não
   // estamos no meio da análise da partida).

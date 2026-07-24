@@ -69,8 +69,7 @@ body {
 img, svg, canvas { max-width: 100%; }
 
 header {
-  /* Enxuto de propósito: cada pixel aqui sai da altura do tabuleiro. */
-  padding: 9px 24px;
+  padding: 14px 24px;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 0 rgba(0,0,0,0.25);
@@ -1102,14 +1101,17 @@ button.secondary:focus-visible {
     /* Altura de referência do tabuleiro = viewport menos tudo que o acompanha
        (header, footer, barras dos jogadores, controles, comentário do lance e
        os gaps). +32px porque --panel-max inclui a coluna da eval bar.
-       A constante caiu de 344 pra 168 ao longo de duas rodadas: enxugando esse
-       cortejo (ver o bloco de uma-tela-só logo abaixo) e tirando o comentário
-       do lance daqui pra coluna da direita. O tabuleiro foi de 524 pra 700px em
-       1440x900. Se você mexer na altura de QUALQUER peça daquele bloco,
-       reajuste esta constante — é a soma delas menos 32 (a coluna da eval bar,
-       que é horizontal e já está embutida no --panel-max). */
-    --panel-max: clamp(380px, calc(100vh - 195px), 1000px);
-    --panel-max: clamp(380px, calc(100dvh - 195px), 1000px);
+       O tabuleiro é o herói: escala com a ALTURA da janela e vai até 1000px em
+       monitor grande. A constante de 166px é o que fica ombro a ombro com ele
+       na vertical — header, respiro do topo, as duas barras de jogador, os
+       controles e os gaps. É o que garante que o tabuleiro E as setas de
+       navegação caibam sem rolar; o resto da página (gráfico, engine) fica
+       abaixo da dobra de propósito e chega com um scroll.
+       Em 1440x900 dá ~694px de tabuleiro, contra os 524 de quando esta tela
+       nasceu. Mexeu na altura de alguma daquelas peças, reajuste aqui — o
+       script de medição vive no scratchpad da sessão (dobra.js). */
+    --panel-max: clamp(460px, calc(100vh - 174px), 1000px);
+    --panel-max: clamp(460px, calc(100dvh - 174px), 1000px);
   }
 
   main {
@@ -1118,7 +1120,11 @@ button.secondary:focus-visible {
        (--panel-max) e as laterais dividem o que sobrar. Antes as laterais
        tinham mínimo de 340px cada, o que em 1150px espremia o herói pra 326px —
        menor que os próprios painéis. */
-    grid-template-columns: minmax(280px, 1fr) minmax(0, var(--panel-max)) minmax(280px, 1fr);
+    grid-template-columns: minmax(268px, 1fr) minmax(0, var(--panel-max)) minmax(268px, 1fr);
+    /* Gutter menor que o padrão: entre 1150 e 1440px quem limitava o tabuleiro
+       era a LARGURA (laterais no mínimo + gutter), não a altura. Afrouxar os
+       dois devolveu ~35px de tabuleiro nessas telas. */
+    column-gap: clamp(24px, 3vw, 48px);
     justify-content: center;
   }
 
@@ -1131,7 +1137,6 @@ button.secondary:focus-visible {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    min-height: 0;
     min-width: 0;
   }
   .review-col #move-info {
@@ -1140,7 +1145,9 @@ button.secondary:focus-visible {
     text-align: left;
   }
   .review-col #move-classification { justify-content: flex-start; }
-  .review-col .moves-list { flex: 1 1 auto; min-height: 0; }
+  /* A lista tem o scroll dela (85vh, do estilo base) — é o único scroll interno
+     que sobrou no desktop, e é o comportamento original. */
+  .review-col .moves-list { flex: 0 1 auto; }
 
   /* Depois da análise o relatório é o que importa: acurácia e coach sobem, o
      formulário de importar desce pro fim da coluna. Continua inteiro — só
@@ -1151,64 +1158,24 @@ button.secondary:focus-visible {
   #import-card  { order: 4; }
 }
 
-/* Uma tela só: o main ocupa exatamente a altura que sobra e cada coluna rola
-   por dentro (igual ao Game Review do chess.com). Antes a página tinha 1473px
-   numa viewport de 900 — o Coach e o gráfico de eval ficavam SEMPRE abaixo da
-   dobra. Só vale com altura suficiente: em janela baixa a página volta a rolar
-   normalmente, senão o conteúdo ficaria inalcançável. */
-@media (min-width: 1101px) and (min-height: 700px) {
-  body { height: 100dvh; overflow: hidden; }
-
-  main {
-    min-height: 0;
-    overflow: hidden;
-    grid-template-rows: minmax(0, 1fr);
-    /* Respiro entre o header e o conteúdo. */
-    padding: 16px 16px 8px;
-  }
-
-  /* ---- Tudo que divide a altura com o tabuleiro fica enxuto ----
-     Aqui cada pixel economizado vira pixel de tabuleiro (é a constante do
-     --panel-max acima). Nada foi removido — só compactado. As exceções
-     deliberadas são o logo (ficou maior) e o respiro do header, pagos pelos
-     outros itens daqui. */
-  header { padding: 12px 24px; }
-  footer { padding: 3px 16px; font-size: 0.72rem; }
-
-  .board-section { gap: 6px; }
+/* Desktop: mantém os alvos de toque/pesos comfortáveis, mas enxuga o que fica
+   ombro a ombro com o tabuleiro na vertical — cada pixel aqui é pixel de
+   tabuleiro. A página rola normalmente (o gráfico e o card da engine ficam
+   abaixo da dobra, e tudo bem: chegam com um scroll).
+   Já foi um layout de altura travada com cada coluna rolando por dentro; os
+   scrollbars internos incomodavam mais do que a "tela única" ajudava. */
+@media (min-width: 1101px) {
+  .board-section { gap: 8px; }
   .board-stack { gap: 4px; }
-  .player-bar { padding: 2px 12px; font-size: 0.88rem; }
+  .player-bar { padding: 3px 12px; font-size: 0.9rem; }
   .player-bar .player-disc { width: 14px; height: 14px; flex-basis: 14px; }
   /* Ponteiro de mouse não precisa dos 44px de alvo de toque. Quem manda na
      altura aqui é o padding, não o min-height. */
   .controls button { padding: 5px 14px; min-height: 34px; }
 
-  #move-info { padding: 7px 12px; }
-  #move-classification { font-size: 1rem; margin-bottom: 2px; }
-  #move-comment { font-size: 0.85rem; line-height: 1.3; margin-bottom: 3px; }
-  #move-pv { font-size: 0.8rem; }
-
-  .sidebar,
-  .board-section {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-  /* Respiro pro scrollbar não encostar na sombra dos cards. */
-  .sidebar { padding-right: 4px; }
-
-  .moves-list {
-    max-height: none;
-    min-height: 0;
-    height: 100%;
-    overscroll-behavior: contain;
-    display: flex;
-    flex-direction: column;
-  }
-  /* Sem partida, o estado vazio ficava grudado no topo de um card de 750px de
-     altura. Centraliza no espaço que ele de fato ocupa. */
-  #moves-container { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  #moves-container > .cr-empty { flex: 1 1 auto; justify-content: center; }
+  #move-info { padding: 9px 12px; }
+  #move-classification { font-size: 1rem; margin-bottom: 3px; }
+  #move-comment { font-size: 0.86rem; line-height: 1.35; }
 }
 
 /* ============================================================

@@ -487,21 +487,42 @@ function clearMobileTabFlags() {
 }
 
 /**
- * No mobile a lista de lances rola com a página (não tem scroll próprio). Como
- * o tabuleiro fica preso no topo, dá pra rolar a página sem perder a posição de
- * vista — então acompanhamos o lance ativo, movendo o mínimo necessário.
+ * No mobile a lista de lances rola com a página (não tem scroll próprio), e a
+ * barra do tabuleiro é sticky. Acompanhar o lance ativo, então, é rolar a
+ * página — a lista passa POR BAIXO da barra e o tabuleiro fica parado.
+ *
+ * A única coisa que ainda tirava o tabuleiro do lugar era o header do site:
+ * enquanto ele não sai da tela, a barra ainda não encostou no topo e o
+ * tabuleiro "sobe" junto com o scroll. Por isso o primeiro passo aqui é
+ * encostar a barra no topo: a partir do primeiro lance o tabuleiro assume a
+ * posição definitiva dele e não se mexe mais — só a lista embaixo.
  */
 function followActiveMoveOnPage(cell) {
-  const tabs = document.getElementById("board-tabs");
-  const top = (tabs ? tabs.getBoundingClientRect().bottom : 0) + 8;
-  const bottom = window.innerHeight - 8;
+  const stack = document.getElementById("board-stack");
+  const y = window.scrollY;
+
+  // 1) Fixa a barra do tabuleiro no topo, se ainda não estiver. O ponto exato é
+  //    a posição dela no DOCUMENTO — não dá pra usar a altura do header, que
+  //    ignora o padding do <main> (dava 100px em vez de 112 e o tabuleiro
+  //    parava 12px abaixo do lugar definitivo).
+  const stackTopDoc = stack ? Math.round(stack.getBoundingClientRect().top + y) : 0;
+  let alvo = Math.max(y, stackTopDoc);
+  const empurrao = alvo - y;   // quanto o conteúdo sobe por causa desse passo
+
+  // 2) Com a barra fixa, o topo útil é logo abaixo dela. As coordenadas do
+  //    lance são as de agora menos o empurrão do passo 1.
+  const topo = (stack ? stack.offsetHeight : 0) + 8;
+  const base = window.innerHeight - 8;
   const r = cell.getBoundingClientRect();
-  let delta = 0;
-  if (r.top < top) delta = r.top - top;
-  else if (r.bottom > bottom) delta = r.bottom - bottom;
+  const cellTop = r.top - empurrao;
+  const cellBottom = r.bottom - empurrao;
+  if (cellTop < topo) alvo -= (topo - cellTop);
+  else if (cellBottom > base) alvo += (cellBottom - base);
+
   // Sem animação: passar lances rápido no ◀/▶ não pode virar uma fila de
   // scrolls suaves brigando entre si.
-  if (delta) window.scrollBy({ top: delta, behavior: "auto" });
+  alvo = Math.max(0, Math.round(alvo));
+  if (alvo !== y) window.scrollTo({ top: alvo, behavior: "auto" });
 }
 
 function initControls() {
@@ -1778,7 +1799,11 @@ function goToPly(ply) {
       } else if (isMobileShell() && state.mobileTab === "moves") {
         // Mobile: a lista rola com a página, mas o tabuleiro fica preso no topo
         // — dá pra acompanhar o lance ativo sem perder o board de vista.
-        followActiveMoveOnPage(active);
+        // Num frame à frente de propósito: o card de avaliação logo acima da
+        // lista acabou de trocar de conteúdo e pode ter mudado de altura
+        // (linha "Melhor linha" aparece/some). Medir antes desse ajuste dava
+        // conta errada e deixava o lance meio escondido no rodapé.
+        requestAnimationFrame(() => followActiveMoveOnPage(active));
       }
     }
   }

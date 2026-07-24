@@ -242,16 +242,19 @@
           <span>🔎 Modo exploração — analisando variante ao vivo</span>
           <button id="btn-back-to-game" class="primary small">Voltar pra partida</button>
         </div>
-      </div>
 
-      <!-- Abas do app no mobile (≤900px). Escondidas no desktop, onde os quatro
-           painéis aparecem todos ao mesmo tempo nas colunas laterais. -->
-      <nav class="board-tabs" id="board-tabs" role="tablist" aria-label="Seções da análise">
-        <button type="button" class="board-tab" role="tab" data-mtab="import" aria-selected="false" aria-controls="import-card">Importar</button>
-        <button type="button" class="board-tab" role="tab" data-mtab="moves" aria-selected="true" aria-controls="moves-container">Lances</button>
-        <button type="button" class="board-tab" role="tab" data-mtab="report" aria-selected="false" aria-controls="summary-card">Resumo</button>
-        <button type="button" class="board-tab" role="tab" data-mtab="engine" aria-selected="false" aria-controls="live-engine-card">Engine</button>
-      </nav>
+        <!-- Abas do app no mobile (≤1100px). Escondidas no desktop, onde os
+             quatro painéis aparecem todos ao mesmo tempo nas colunas laterais.
+             Ficam DENTRO da .board-stack pra que um único elemento sticky
+             segure tabuleiro + controles + abas: assim não precisa medir a
+             altura da barra no JS pra grudar as abas embaixo dela. -->
+        <nav class="board-tabs" id="board-tabs" role="tablist" aria-label="Seções da análise">
+          <button type="button" class="board-tab" role="tab" data-mtab="import" aria-selected="false" aria-controls="import-card">Importar</button>
+          <button type="button" class="board-tab" role="tab" data-mtab="moves" aria-selected="true" aria-controls="moves-container">Lances</button>
+          <button type="button" class="board-tab" role="tab" data-mtab="report" aria-selected="false" aria-controls="summary-card">Resumo</button>
+          <button type="button" class="board-tab" role="tab" data-mtab="engine" aria-selected="false" aria-controls="live-engine-card">Engine</button>
+        </nav>
+      </div>
 
       <!-- Overlay de promoção (modo exploração) -->
       <div id="promo-dialog" class="promo-dialog" hidden aria-hidden="true">

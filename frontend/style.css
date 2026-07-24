@@ -1099,8 +1099,8 @@ button.secondary:focus-visible {
        1440x900. Se você mexer na altura de QUALQUER peça daquele bloco,
        reajuste esta constante — é a soma delas menos 32 (a coluna da eval bar,
        que é horizontal e já está embutida no --panel-max). */
-    --panel-max: clamp(380px, calc(100vh - 169px), 1000px);
-    --panel-max: clamp(380px, calc(100dvh - 169px), 1000px);
+    --panel-max: clamp(380px, calc(100vh - 195px), 1000px);
+    --panel-max: clamp(380px, calc(100dvh - 195px), 1000px);
   }
 
   main {
@@ -1154,14 +1154,16 @@ button.secondary:focus-visible {
     min-height: 0;
     overflow: hidden;
     grid-template-rows: minmax(0, 1fr);
-    padding: 6px 16px;
+    /* Respiro entre o header e o conteúdo. */
+    padding: 16px 16px 8px;
   }
 
   /* ---- Tudo que divide a altura com o tabuleiro fica enxuto ----
      Aqui cada pixel economizado vira pixel de tabuleiro (é a constante do
-     --panel-max acima). Nada foi removido — só compactado. O logo é a exceção
-     deliberada: ele ficou MAIOR, e os pixels vieram destes outros. */
-  header { padding: 5px 24px; }
+     --panel-max acima). Nada foi removido — só compactado. As exceções
+     deliberadas são o logo (ficou maior) e o respiro do header, pagos pelos
+     outros itens daqui. */
+  header { padding: 12px 24px; }
   footer { padding: 3px 16px; font-size: 0.72rem; }
 
   .board-section { gap: 6px; }
@@ -1261,8 +1263,8 @@ button.secondary:focus-visible {
      não só pela altura da própria .board-section. */
   .board-section { display: contents; }
 
+  /* As abas não entram aqui: moram DENTRO da .board-stack. */
   .board-stack      { order: 1; }
-  .board-tabs       { order: 2; }
   #move-info        { order: 3; }
   #import-card      { order: 4; }
   .moves-list       { order: 5; }
@@ -1287,18 +1289,23 @@ button.secondary:focus-visible {
     margin-inline: auto;
   }
 
-  /* ---- Bloco do tabuleiro ----
-     Rola junto com a página, de propósito. Já foi sticky com encolhimento ao
-     rolar; ficava mudando de tamanho o tempo todo e atrapalhava mais do que
-     ajudava. Agora: o tabuleiro tem UM tamanho e não muda mais; quem fica preso
-     no topo é só a barra de abas, que é barata (50px) e sempre útil. Rolando,
-     a lista de lances fica com a tela inteira. */
+  /* ---- Bloco do tabuleiro: preso no topo ----
+     Tabuleiro + barras dos jogadores + controles + abas num único elemento
+     sticky. É o que faz o tabuleiro ficar PARADO enquanto os lances passam por
+     baixo — sem ele, a página rolava pra acompanhar o lance ativo e o
+     tabuleiro saía da tela.
+     O tamanho aqui é fixo: nada encolhe, nada redimensiona com o scroll. */
   .board-stack {
-    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    gap: 6px;
     /* Sangra até as bordas da tela pro tabuleiro encostar nelas. */
     width: calc(100% + 24px);
     margin-inline: -12px;
-    padding: 0 12px 4px;
+    padding: 0 12px 8px;
+    background: var(--bg);
+    box-shadow: 0 8px 14px -10px rgba(0, 0, 0, 0.85);
   }
 
   /* Tabuleiro + eval bar de ponta a ponta da tela. No celular cada pixel de
@@ -1330,13 +1337,15 @@ button.secondary:focus-visible {
   .cm-chessboard { border-radius: 0; clip-path: none; }
   .eval-bar { border-radius: 0 4px 4px 0; }
 
-  /* Barras dos jogadores compactas — cada pixel aqui sai da lista de lances. */
-  .player-bar { padding: 6px 10px; font-size: 0.9rem; }
-  .player-bar .player-elo { font-size: 0.78rem; }
+  /* Barras dos jogadores e controles compactos — tudo isso mora na barra presa
+     no topo, então cada pixel aqui é um pixel a menos de lista de lances. */
+  .player-bar { padding: 4px 10px; font-size: 0.88rem; }
+  .player-bar .player-elo { font-size: 0.76rem; }
+  .player-bar .player-disc { width: 14px; height: 14px; flex-basis: 14px; }
+  .controls button { padding: 6px 14px; min-height: 40px; }
 
   .board-tabs {
     display: flex;
-    position: relative;   /* âncora da faixa opaca (::after) */
     gap: 4px;
     width: 100%;
     /* Acompanha o tabuleiro, mas nunca abaixo de 320px: com o board limitado
@@ -1349,22 +1358,8 @@ button.secondary:focus-visible {
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
-    /* Única coisa presa no topo: some com o tabuleiro ao rolar e a barra fica,
-       então dá pra trocar de seção de qualquer ponto da página. */
-    position: sticky;
-    top: 0;
-    z-index: 19;
-  }
-  /* Faixa opaca logo abaixo das abas: sem ela dava pra ver uma fatia do card
-     de baixo passando no vão de 12px enquanto a página rola. */
-  .board-tabs::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: -12px;
-    right: -12px;
-    height: 13px;
-    background: var(--bg);
+    /* Não precisa de sticky próprio: mora dentro da .board-stack, que já é
+       sticky — as abas ficam presas no rodapé dela. */
   }
 
   /* ---- Um painel por vez ----
@@ -1411,6 +1406,10 @@ button.secondary:focus-visible {
     --panel-max: min(calc(100vw - 24px), calc(100vh - 60px), 720px);
   }
   .board-wrap { width: min(100vw, calc(100vh - 60px), 720px); }
+  /* Deitado, a barra do tabuleiro é mais alta que a própria tela — presa no
+     topo ela empurraria as abas pra fora da viewport (ficavam 86px abaixo do
+     fim da tela). Aqui ela volta a rolar com a página. */
+  .board-stack { position: static; box-shadow: none; }
 }
 
 /* Celular: aperta espaçamentos e engorda os alvos de toque. */

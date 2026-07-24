@@ -390,14 +390,15 @@ function initTabs() {
 }
 
 // ============================================================
-// Casca de app no mobile (≤900px)
+// Casca de app (≤1100px — celular e tablet)
 // ------------------------------------------------------------
-// No celular a página deixa de ser uma pilha infinita de cards: o tabuleiro +
-// controles ficam presos no topo (sticky, CSS) e uma barra de abas troca o
-// painel que rola embaixo. Nada some — os quatro painéis (importar, lances,
-// resumo, engine) continuam completos, a um toque um do outro.
+// Abaixo de 1100px não cabem três colunas, e a página deixa de ser uma pilha
+// infinita de cards: o tabuleiro + controles ficam presos no topo (sticky, no
+// CSS) e uma barra de abas troca o painel que rola embaixo. Nada some — os
+// quatro painéis (importar, lances, resumo, engine) continuam completos, a um
+// toque um do outro. O breakpoint tem que casar com o do style.css.
 // ============================================================
-const MOBILE_SHELL_MQ = "(max-width: 900px)";
+const MOBILE_SHELL_MQ = "(max-width: 1100px)";
 const MOBILE_TABS = ["import", "moves", "report", "engine"];
 
 function isMobileShell() {

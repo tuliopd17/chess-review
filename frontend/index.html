@@ -163,6 +163,11 @@
         <h2>Resumo</h2>
         <div id="players-summary"></div>
         <div id="counts-summary"></div>
+        <!-- Gráfico de eval mora no relatório (como no chess.com), não embaixo
+             do card da engine — lá ficava sempre abaixo da dobra. -->
+        <div class="chart-wrapper" style="display:none;">
+          <div id="eval-chart"></div>
+        </div>
         <div class="summary-actions" id="summary-actions">
           <button type="button" id="btn-export-pgn" class="secondary" title="Baixar PGN com avaliações e classificações">Exportar PGN</button>
           <button type="button" id="btn-share-link" class="secondary" title="Copiar link compartilhável com a partida">Copiar link</button>
@@ -313,10 +318,6 @@
           <strong>Ao vivo</strong> analisa a posição atual / variantes.
         </p>
       </section>
-
-      <div class="chart-wrapper" style="display:none;">
-        <div id="eval-chart"></div>
-      </div>
     </section>
 
     <!-- Direita: lista de lances -->
@@ -329,7 +330,7 @@
       <div id="moves-container">
         <!-- Estado vazio (construído com utilitários Tailwind + tokens chess.com).
              O app.js substitui este conteúdo pela lista de lances ao analisar. -->
-        <div class="flex flex-col items-center gap-2 py-8 px-3 text-center text-muted">
+        <div class="cr-empty flex flex-col items-center gap-2 py-8 px-3 text-center text-muted">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-60" aria-hidden="true">
             <path d="M8 16l-1 4h10l-1-4" />

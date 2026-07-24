@@ -60,7 +60,8 @@ body {
 img, svg, canvas { max-width: 100%; }
 
 header {
-  padding: 14px 24px;
+  /* Enxuto de propósito: cada pixel aqui sai da altura do tabuleiro. */
+  padding: 9px 24px;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 0 rgba(0,0,0,0.25);
@@ -84,7 +85,7 @@ header h1.brand {
   flex: 0 0 auto;
 }
 header h1.brand img {
-  height: 68px;
+  height: 54px;
   width: auto;
   display: block;
 }
@@ -159,7 +160,7 @@ main {
 
 .tabs {
   display: flex;
-  gap: 2px;
+  gap: 0;
   margin-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
@@ -168,9 +169,13 @@ main {
   background: none;
   border: none;
   color: var(--text-muted);
-  padding: 8px 10px;
+  /* Compacto de propósito: as quatro abas (chess.com/lichess/PGN/histórico)
+     precisam caber numa linha só mesmo na coluna lateral mais estreita
+     (280px em 1101px de viewport) — senão "histórico" era cortado. */
+  padding: 8px 6px;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.83rem;
+  white-space: nowrap;
   border-bottom: 2px solid transparent;
 }
 .tab-btn.active {
@@ -359,14 +364,17 @@ button.danger:hover { background: var(--danger); color: white; }
   position: relative;
   width: 24px;
   flex: 0 0 24px;
-  background: white; /* parte das brancas */
+  background: #f4f2ef; /* parte das brancas */
   border-radius: 5px;
   overflow: hidden;
+  /* Contorno interno: sem ele a metade preta some contra o --bg da página
+     (eram #2b2826 vs #312e2b — praticamente a mesma cor). */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .eval-bar-black {
   position: absolute;
   top: 0; left: 0; right: 0;
-  background: #2b2826;
+  background: #1a1817;
   transition: height 0.3s ease;
   height: 50%;
 }
@@ -542,8 +550,7 @@ button.danger:hover { background: var(--danger); color: white; }
 #move-info {
   width: 100%;
   max-width: var(--panel-max);
-  min-height: 60px;
-  padding: 12px;
+  padding: 10px 12px;
   background: var(--bg-card);
   border-radius: var(--radius);
   border: 1px solid rgba(255,255,255,0.04);
@@ -574,10 +581,13 @@ button.danger:hover { background: var(--danger); color: white; }
 }
 #move-pv strong { color: var(--text); }
 
+/* Gráfico de eval — vive dentro do card de Resumo (o relatório), como no
+   chess.com. Antes ficava solto embaixo do card da engine, o que garantia que
+   ninguém visse: abaixo da dobra em qualquer viewport. */
 .chart-wrapper {
   width: 100%;
-  max-width: var(--panel-max);
-  height: 180px;
+  margin: 12px 0 0;
+  height: 150px;
   border-radius: var(--radius);
   border: 1px solid rgba(255,255,255,0.04);
   overflow: hidden;
@@ -745,12 +755,14 @@ button.danger:hover { background: var(--danger); color: white; }
 #coach-critical .critical-item:hover { background: var(--bg-elevated); }
 
 footer {
-  padding: 16px;
+  padding: 10px 16px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   border-top: 1px solid var(--border);
+  flex: 0 0 auto;
 }
+footer p { margin: 0; }
 footer a { color: var(--accent); }
 
 .muted { color: var(--text-muted); font-size: 0.85rem; margin-top: 8px; }
@@ -1078,50 +1090,108 @@ button.secondary:focus-visible {
    --panel-max, então continuam alinhados com ele. */
 @media (min-width: 1101px) {
   :root {
-    --panel-max: clamp(520px, calc(100vh - 230px), 760px);
+    /* Altura de referência do tabuleiro = viewport menos tudo que o acompanha
+       (header, footer, barras dos jogadores, controles, comentário do lance e
+       os gaps). +32px porque --panel-max inclui a coluna da eval bar. */
+    --panel-max: clamp(380px, calc(100vh - 344px), 760px);
+    --panel-max: clamp(380px, calc(100dvh - 344px), 760px);
   }
+
+  main {
+    max-width: 1680px;
+    /* O tabuleiro tem PRIORIDADE: a coluna central pega o tamanho ideal
+       (--panel-max) e as laterais dividem o que sobrar. Antes as laterais
+       tinham mínimo de 340px cada, o que em 1150px espremia o herói pra 326px —
+       menor que os próprios painéis. */
+    grid-template-columns: minmax(280px, 1fr) minmax(0, var(--panel-max)) minmax(280px, 1fr);
+    justify-content: center;
+  }
+
+  /* Depois da análise o relatório é o que importa: acurácia e coach sobem, o
+     formulário de importar desce pro fim da coluna. Continua inteiro — só
+     deixa de ocupar o canto mais nobre da tela. */
+  #summary-card { order: 1; }
+  #coach-card   { order: 2; }
+  #opening-card { order: 3; }
+  #import-card  { order: 4; }
 }
 
-/* Tablet e abaixo: empilha em coluna única e REORDENA pro fluxo natural de uso:
-   importar → tabuleiro → lances → resumo/coach. O `display: contents` faz os
-   cards da sidebar virarem itens diretos do main, então o `order` funciona. */
+/* Uma tela só: o main ocupa exatamente a altura que sobra e cada coluna rola
+   por dentro (igual ao Game Review do chess.com). Antes a página tinha 1473px
+   numa viewport de 900 — o Coach e o gráfico de eval ficavam SEMPRE abaixo da
+   dobra. Só vale com altura suficiente: em janela baixa a página volta a rolar
+   normalmente, senão o conteúdo ficaria inalcançável. */
+@media (min-width: 1101px) and (min-height: 700px) {
+  body { height: 100dvh; overflow: hidden; }
+
+  main {
+    min-height: 0;
+    overflow: hidden;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .sidebar,
+  .board-section {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* Respiro pro scrollbar não encostar na sombra dos cards. */
+  .sidebar { padding-right: 4px; }
+
+  .moves-list {
+    max-height: none;
+    min-height: 0;
+    height: 100%;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Sem partida, o estado vazio ficava grudado no topo de um card de 750px de
+     altura. Centraliza no espaço que ele de fato ocupa. */
+  #moves-container { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  #moves-container > .cr-empty { flex: 1 1 auto; justify-content: center; }
+}
+
+/* ============================================================
+   Casca de app (≤1100px) — celular e tablet
+   ------------------------------------------------------------
+   Abaixo de 1100px não cabem três colunas. Em vez da pilha infinita de cards
+   (a versão antiga tinha 3143px de rolagem num tablet de 1000px), o tabuleiro
+   e os controles ficam presos no topo (sticky) e uma barra de abas troca o
+   painel que rola embaixo — Importar / Lances / Resumo / Engine.
+   Nada foi removido: os quatro painéis continuam completos, a um toque.
+   ============================================================ */
 @media (max-width: 1100px) {
   main {
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
+  /* Faz os cards da sidebar virarem itens diretos do main, pro `order` valer. */
   .sidebar { display: contents; }
+  .moves-list { max-height: none; }
 
-  #import-card   { order: 1; }
-  .board-section { order: 2; }
-  .moves-list    { order: 3; max-height: none; }
-  #opening-card  { order: 4; }
-  #summary-card  { order: 5; }
-  #coach-card    { order: 6; }
-
-  /* No empilhado, tabuleiro e painéis podem ocupar um pouco mais. */
-  :root { --panel-max: 640px; }
-  .board-section { align-items: center; }
-}
-
-/* ============================================================
-   Casca de app (≤900px)
-   ------------------------------------------------------------
-   No celular a pilha infinita de cards vira uma UI de app: o tabuleiro e os
-   controles ficam presos no topo (sticky) e, logo abaixo deles, uma barra de
-   abas troca o painel que rola — Importar / Lances / Resumo / Engine.
-   Nada foi removido: os quatro painéis continuam completos, a um toque.
-   ============================================================ */
-@media (max-width: 900px) {
   :root {
-    /* O tabuleiro segue sendo o herói, mas não pode comer a tela inteira:
-       limita pela largura E pela altura pra sobrar painel legível embaixo.
-       A 2ª linha usa dvh (desconta a barra do navegador); quem não suporta
-       fica com a 1ª. */
-    --panel-max: clamp(220px, min(calc(100vw - 24px), calc(70vh - 146px)), 640px);
-    --panel-max: clamp(220px, min(calc(100vw - 24px), calc(70dvh - 146px)), 640px);
+    /* Largura de TODOS os painéis (barras dos jogadores, controles, abas,
+       comentário, lances, resumo, coach, engine). É a mesma conta da largura do
+       tabuleiro, menos os 12px de respiro de cada lado — assim tudo fica na
+       mesma coluna. Antes o tablet tinha três larguras diferentes na mesma
+       tela: tabuleiro 694, barras 640, lista de lances 976.
+       O TABULEIRO em si ignora isso e sangra até as bordas — ver .board-wrap. */
+    --panel-max: min(calc(100vw - 24px), calc(100vh - 274px), 720px);
+    --panel-max: min(calc(100vw - 24px), calc(100dvh - 274px), 720px);
   }
+
+  /* Header centralizado: logo em cima, tagline embaixo. Alinhado à esquerda a
+     logo ficava jogada num canto com a tagline pendurada embaixo. */
+  header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+  }
+  header .tagline { flex: 0 1 auto; max-width: 34ch; }
 
   main { gap: 12px; }
 
@@ -1136,16 +1206,26 @@ button.secondary:focus-visible {
   #move-info        { order: 3; }
   #import-card      { order: 4; }
   .moves-list       { order: 5; }
-  .chart-wrapper    { order: 6; }
-  #opening-card     { order: 7; }
-  #summary-card     { order: 8; }
-  #coach-card       { order: 9; }
-  #live-engine-card { order: 10; }
+  /* Aba "Resumo": acurácia (o gráfico mora dentro desse card), coach, abertura. */
+  #summary-card     { order: 6; }
+  #coach-card       { order: 7; }
+  #opening-card     { order: 8; }
+  #live-engine-card { order: 9; }
 
-  /* Esses três perderam o align-items:center da .board-section. */
+  /* Todo painel na mesma coluna do tabuleiro, centralizado. Sem isso os cards
+     vindos da sidebar (lances, resumo, coach, importar) esticavam pela largura
+     inteira enquanto as barras do jogador ficavam no --panel-max. */
   #move-info,
-  .card.live-engine,
-  .chart-wrapper { margin-inline: auto; }
+  #import-card,
+  .moves-list,
+  #summary-card,
+  #coach-card,
+  #opening-card,
+  .card.live-engine {
+    width: 100%;
+    max-width: var(--panel-max);
+    margin-inline: auto;
+  }
 
   /* ---- Barra do tabuleiro, presa no topo ---- */
   .board-stack {
@@ -1163,6 +1243,32 @@ button.secondary:focus-visible {
     background: var(--bg);
     box-shadow: 0 8px 16px -10px rgba(0, 0, 0, 0.8);
   }
+
+  /* Tabuleiro + eval bar de ponta a ponta da tela. No celular cada pixel de
+     largura vira casa maior, então o herói ignora o padding do main e encosta
+     nas bordas (a .board-stack tem 12px de padding, e o align-items:center faz
+     o transbordo sair simétrico — dá exatamente a largura da tela).
+     O `min()` só entra em ação em tela muito baixa, pra não empurrar as abas
+     pra fora da viewport.
+     Nada de `margin-inline: auto` aqui: margem automática em flexbox vira 0
+     quando o item é MAIOR que o container, e aí ele encosta só na esquerda —
+     era isso que criava 12px de scroll horizontal. Quem centraliza (e faz o
+     transbordo sair simétrico) é o align-items:center da .board-stack. */
+  .board-wrap {
+    max-width: none;
+    /* O teto de 720px é pro tablet: em 1000px de largura um tabuleiro de ponta
+       a ponta engoliria a tela inteira. No celular quem manda é o 100vw. */
+    width: min(100vw, calc(100vh - 274px), 720px);
+    width: min(100vw, calc(100dvh - 274px), 720px);
+    /* Sem isso o flex-shrink padrão encolhe o tabuleiro de volta pra largura do
+       container (366px em vez de 390px) e a sangria não acontece. */
+    flex-shrink: 0;
+    gap: 6px;
+  }
+  /* Encostando na borda, canto arredondado só mostraria o fundo atrás. */
+  .board-container { border-radius: 0; }
+  .cm-chessboard { border-radius: 0; clip-path: none; }
+  .eval-bar { border-radius: 0 4px 4px 0; }
 
   .board-tabs {
     display: flex;
@@ -1192,8 +1298,7 @@ button.secondary:focus-visible {
   body[data-mtab]:not([data-mtab="moves"])  .moves-list  { display: none !important; }
   body[data-mtab]:not([data-mtab="report"]) #opening-card,
   body[data-mtab]:not([data-mtab="report"]) #summary-card,
-  body[data-mtab]:not([data-mtab="report"]) #coach-card,
-  body[data-mtab]:not([data-mtab="report"]) .chart-wrapper { display: none !important; }
+  body[data-mtab]:not([data-mtab="report"]) #coach-card { display: none !important; }
   body[data-mtab]:not([data-mtab="engine"]) #live-engine-card { display: none !important; }
 
   /* Na aba Importar o tabuleiro NÃO fica preso: o teclado virtual come metade
@@ -1203,25 +1308,48 @@ button.secondary:focus-visible {
     box-shadow: none;
   }
   body[data-mtab="import"] .board-tabs { top: 0; }
+  /* O comentário do lance atual não tem o que fazer na aba de importar (e
+     rouba espaço do formulário quando o teclado sobe). Volta na hora que sai. */
+  body[data-mtab="import"] #move-info { display: none !important; }
+
+  /* ---- Alvos de toque ----
+     Vale em toda a casca de app (não só ≤600px): num celular deitado, com
+     780px de largura, os lances ainda são tocados com o dedo. */
+  .move-pair { grid-template-columns: 30px 1fr 1fr; gap: 6px; margin-bottom: 3px; }
+  .move-cell { padding: 9px 8px; min-height: 40px; font-size: 0.92rem; }
+  .game-item { padding: 11px 10px; min-height: 44px; }
+  .engine-line { padding: 9px 8px; grid-template-columns: 52px 1fr; }
+  #coach-critical .critical-item { padding: 9px 8px; min-height: 42px; font-size: 0.9rem; }
+  .summary-actions button { flex: 1 1 140px; min-height: 44px; }
+  /* Link do rodapé também precisa de área de toque. */
+  footer a { display: inline-block; padding: 11px 6px; }
+
+  /* Listas de partidas ganham fôlego — aqui elas têm uma aba só pra elas. */
+  .games-list { max-height: 55vh; }
 }
 
 /* Celular deitado (ou qualquer tela muito baixa): não sobra altura pra prender
    o tabuleiro no topo — volta pro fluxo normal e encolhe o tabuleiro. */
-@media (max-width: 900px) and (max-height: 560px) {
-  /* Sem sticky, a página rola normal — então o tabuleiro pode ocupar quase toda
-     a altura, que é o que sobra num celular deitado. */
-  :root { --panel-max: clamp(240px, min(calc(100vw - 24px), calc(100vh - 60px)), 640px); }
+@media (max-width: 1100px) and (max-height: 560px) {
+  /* Sem sticky, a página rola normal — então o tabuleiro é limitado pela
+     altura (deitado, largura sobra e altura é o que falta). --panel-max tem que
+     seguir a mesma conta, senão a fórmula do modo retrato (100dvh − 274px)
+     esmaga os painéis pra ~106px num celular deitado. */
+  :root {
+    --panel-max: min(calc(100vw - 24px), calc(100vh - 60px), 720px);
+  }
+  .board-wrap { width: min(100vw, calc(100vh - 60px), 720px); }
   .board-stack { position: static; box-shadow: none; }
   .board-tabs { top: 0; }
 }
 
 /* Celular: aperta espaçamentos e engorda os alvos de toque. */
 @media (max-width: 600px) {
-  header { padding: 8px 14px; gap: 2px 12px; }
+  header { padding: 8px 14px 10px; }
   header h1.brand img { height: 46px; }
   /* Tagline continua visível — só compactada (é a descrição do produto no
      primeiro contato). */
-  .tagline { font-size: 0.75rem; line-height: 1.3; flex-basis: 100%; }
+  .tagline { font-size: 0.75rem; line-height: 1.3; }
 
   main { padding: 12px; gap: 12px; }
   .card { padding: 13px; }
@@ -1231,22 +1359,9 @@ button.secondary:focus-visible {
 
   .tab-btn { padding: 10px 10px; font-size: 0.9rem; }
 
-  /* Alvos de toque ≥40px nas listas que a gente toca o tempo todo. */
-  .move-pair { grid-template-columns: 30px 1fr 1fr; gap: 6px; margin-bottom: 3px; }
-  .move-cell { padding: 9px 8px; min-height: 40px; font-size: 0.92rem; }
-  .game-item { padding: 11px 10px; min-height: 44px; }
-  .engine-line { padding: 9px 8px; grid-template-columns: 52px 1fr; }
-  #coach-critical .critical-item { padding: 9px 8px; min-height: 42px; font-size: 0.9rem; }
-
-  /* Listas de partidas ganham fôlego — no mobile elas têm a aba só pra elas. */
-  .games-list { max-height: 55vh; }
-
   /* Três selects não cabem numa linha só em 390px. */
   .live-engine-controls { flex-wrap: wrap; gap: 10px 14px; }
   .live-engine-controls select { padding: 6px 8px; }
-
-  /* Exportar / copiar link dividem a linha, com altura de dedo. */
-  .summary-actions button { flex: 1 1 140px; min-height: 44px; }
 
   /* No celular o card de importar vem ANTES do tabuleiro — uma caixa de PGN
      grande empurra o board pra baixo. Encolhe aqui (continua arrastável); no

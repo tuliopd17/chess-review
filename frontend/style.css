@@ -54,7 +54,16 @@ body {
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;        /* nada de scroll horizontal acidental no mobile */
+  /* Nada de scroll horizontal acidental no mobile.
+     `clip` e não `hidden`: `overflow: hidden` faz do body um contêiner de
+     rolagem, e aí o `position: sticky` dos filhos passa a se ancorar NELE em
+     vez da viewport — a barra do tabuleiro para de grudar no topo e sai da
+     tela ao rolar. O Chrome disfarça (propaga o overflow do body pra viewport),
+     o Safari do iPhone não. `clip` recorta igual sem criar contêiner de
+     rolagem, então o sticky continua valendo. A linha `hidden` fica como
+     fallback pra quem não conhece `clip`. */
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 img, svg, canvas { max-width: 100%; }

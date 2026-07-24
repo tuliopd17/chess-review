@@ -1110,8 +1110,8 @@ button.secondary:focus-visible {
        Em 1440x900 dá ~694px de tabuleiro, contra os 524 de quando esta tela
        nasceu. Mexeu na altura de alguma daquelas peças, reajuste aqui — o
        script de medição vive no scratchpad da sessão (dobra.js). */
-    --panel-max: clamp(460px, calc(100vh - 174px), 1000px);
-    --panel-max: clamp(460px, calc(100dvh - 174px), 1000px);
+    --panel-max: clamp(460px, calc(100vh - 188px), 1000px);
+    --panel-max: clamp(460px, calc(100dvh - 188px), 1000px);
   }
 
   main {
@@ -1166,7 +1166,12 @@ button.secondary:focus-visible {
    scrollbars internos incomodavam mais do que a "tela única" ajudava. */
 @media (min-width: 1101px) {
   .board-section { gap: 8px; }
+  /* Barras dos jogadores coladas no tabuleiro (estilo chess.com)… */
   .board-stack { gap: 4px; }
+  /* …mas os controles precisam de ar: encostados eles pareciam parte do
+     tabuleiro. O espaço sai do orçamento do --panel-max (ver a constante lá em
+     cima), por isso vale só aqui e não no gap geral do bloco. */
+  .controls { margin-top: 14px; }
   .player-bar { padding: 3px 12px; font-size: 0.9rem; }
   .player-bar .player-disc { width: 14px; height: 14px; flex-basis: 14px; }
   /* Ponteiro de mouse não precisa dos 44px de alvo de toque. Quem manda na

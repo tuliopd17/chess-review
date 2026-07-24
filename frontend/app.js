@@ -43,6 +43,9 @@ const state = {
   exploreStartFen: null,   // FEN da posição quando começou a explorar
   exploreStartPly: 0,      // ply original em que a exploração começou
   promoPending: null,      // { from, to, resolve } enquanto o diálogo de promoção está aberto
+
+  // ----- Casca de app no mobile -----
+  mobileTab: null,         // "import" | "moves" | "report" | "engine" (só ≤900px)
 };
 
 const PREFS_KEY = "chess_review_prefs_v1";
@@ -94,6 +97,8 @@ function bootApp() {
   initBrandHome();
   initPromoDialog();
   initSummaryActions();
+  initMobileShell();
+  initMobileTabs();
   loadFromHash();
 }
 
@@ -382,6 +387,135 @@ function initTabs() {
       document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     });
   });
+}
+
+// ============================================================
+// Casca de app no mobile (≤900px)
+// ------------------------------------------------------------
+// No celular a página deixa de ser uma pilha infinita de cards: o tabuleiro +
+// controles ficam presos no topo (sticky, CSS) e uma barra de abas troca o
+// painel que rola embaixo. Nada some — os quatro painéis (importar, lances,
+// resumo, engine) continuam completos, a um toque um do outro.
+// ============================================================
+const MOBILE_SHELL_MQ = "(max-width: 900px)";
+const MOBILE_TABS = ["import", "moves", "report", "engine"];
+
+function isMobileShell() {
+  return window.matchMedia(MOBILE_SHELL_MQ).matches;
+}
+
+/**
+ * Publica a altura da barra do tabuleiro em `--stack-h`. É o `top` do sticky
+ * da barra de abas: sem isso as abas grudariam no topo da tela e passariam por
+ * cima do tabuleiro. ResizeObserver cobre tudo que muda a altura (barras dos
+ * jogadores aparecendo, banner de exploração, rotação da tela).
+ */
+function initMobileShell() {
+  const stack = document.getElementById("board-stack");
+  if (!stack) return;
+  const publish = () => {
+    document.documentElement.style.setProperty("--stack-h", `${Math.round(stack.offsetHeight)}px`);
+  };
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(publish).observe(stack);
+  } else {
+    window.addEventListener("resize", publish, { passive: true });
+  }
+  window.addEventListener("orientationchange", () => setTimeout(publish, 300));
+  publish();
+}
+
+function initMobileTabs() {
+  const bar = document.getElementById("board-tabs");
+  if (!bar) return;
+
+  bar.addEventListener("click", (e) => {
+    const btn = e.target.closest(".board-tab");
+    if (btn) setMobileTab(btn.dataset.mtab);
+  });
+
+  // Padrão de tablist no teclado: setas andam entre as abas.
+  bar.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const tabs = [...bar.querySelectorAll(".board-tab")];
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    const step = e.key === "ArrowRight" ? 1 : tabs.length - 1;
+    const next = tabs[(i + step) % tabs.length];
+    next.focus();
+    setMobileTab(next.dataset.mtab, { scroll: false });
+    e.preventDefault();
+  });
+
+  const sync = () => {
+    if (isMobileShell()) {
+      setMobileTab(state.mobileTab || defaultMobileTab(), { scroll: false });
+    } else {
+      // No desktop os quatro painéis convivem nas colunas — some com o filtro.
+      delete document.body.dataset.mtab;
+    }
+  };
+  window.matchMedia(MOBILE_SHELL_MQ).addEventListener("change", sync);
+  sync();
+}
+
+function defaultMobileTab() {
+  // Sem partida na tela, a única coisa a fazer é importar uma.
+  return currentMoves().length ? "moves" : "import";
+}
+
+function setMobileTab(tab, opts = {}) {
+  if (!MOBILE_TABS.includes(tab)) return;
+  state.mobileTab = tab;
+  if (!isMobileShell()) return; // no desktop só guarda a escolha
+
+  document.body.dataset.mtab = tab;
+  document.querySelectorAll(".board-tab").forEach((b) => {
+    const on = b.dataset.mtab === tab;
+    b.setAttribute("aria-selected", String(on));
+    b.tabIndex = on ? 0 : -1;
+    if (on) b.removeAttribute("data-badge");
+  });
+
+  // Highcharts mede o container ao criar; se ele estava em display:none o
+  // gráfico nasce com largura 0. Reflow ao revelar a aba resolve.
+  if (tab === "report" && state.evalChart) {
+    requestAnimationFrame(() => { try { state.evalChart?.reflow(); } catch {} });
+  }
+
+  // Trocar de aba com a página rolada deixaria o novo painel cortado no meio.
+  if (opts.scroll !== false && window.scrollY > 0) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  }
+}
+
+/** Pontinho de "tem coisa nova aqui" numa aba que não está aberta. */
+function flagMobileTab(tab) {
+  if (!isMobileShell() || state.mobileTab === tab) return;
+  document.querySelector(`.board-tab[data-mtab="${tab}"]`)?.setAttribute("data-badge", "1");
+}
+
+function clearMobileTabFlags() {
+  document.querySelectorAll(".board-tab[data-badge]").forEach(b => b.removeAttribute("data-badge"));
+}
+
+/**
+ * No mobile a lista de lances rola com a página (não tem scroll próprio). Como
+ * o tabuleiro fica preso no topo, dá pra rolar a página sem perder a posição de
+ * vista — então acompanhamos o lance ativo, movendo o mínimo necessário.
+ */
+function followActiveMoveOnPage(cell) {
+  const tabs = document.getElementById("board-tabs");
+  const top = (tabs ? tabs.getBoundingClientRect().bottom : 0) + 8;
+  const bottom = window.innerHeight - 8;
+  const r = cell.getBoundingClientRect();
+  let delta = 0;
+  if (r.top < top) delta = r.top - top;
+  else if (r.bottom > bottom) delta = r.bottom - bottom;
+  // Sem animação: passar lances rápido no ◀/▶ não pode virar uma fila de
+  // scrolls suaves brigando entre si.
+  if (delta) window.scrollBy({ top: delta, behavior: "auto" });
 }
 
 function initControls() {
@@ -909,11 +1043,18 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     autoDetectOrientation(cached.analysis.headers, playerUsername);
     showProgress(false);
     renderAll(true);
+    // Mobile: sai da aba de importar e cai direto no tabuleiro + lances.
+    setMobileTab("moves");
+    flagMobileTab("report");
     return;
   }
 
   resetForNewAnalysis();
   showProgress(true, 0, 0);
+  // Mobile: a análise acontece na aba de lances (barra de progresso + os lances
+  // sendo classificados um a um). Deixar o usuário no formulário de importar
+  // seria olhar pra uma tela parada enquanto o WASM trabalha.
+  setMobileTab("moves");
 
   // 1. Backend faz o parse do PGN e devolve a lista de lances + FENs + abertura.
   let parsed;
@@ -998,6 +1139,8 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     state.partialMoves = result.moves;
     showProgress(false);
     renderAll(false);
+    // Acurácia/coach acabaram de nascer numa aba que não está aberta — avisa.
+    flagMobileTab("report");
     // Persiste sem bloquear nem contaminar o caminho de sucesso: se o save
     // falhar, apenas loga (a análise em si já está na tela).
     saveToHistory(cacheKey, result, {
@@ -1088,6 +1231,7 @@ function resetForNewAnalysis() {
   if (state.evalChart) { state.evalChart.destroy(); state.evalChart = null; }
   // Esconde o gráfico até a nova análise gerar dados (renderEvalChart revela).
   document.querySelector(".chart-wrapper").style.display = "none";
+  clearMobileTabFlags();
   goToPly(0);
 }
 
@@ -1609,7 +1753,7 @@ function goToPly(ply) {
   if (ply === 0) {
     infoCls.innerHTML = "Posição inicial";
     infoCls.className = "";
-    infoCmt.textContent = "Use ◀/▶ ou clique nos lances para navegar.";
+    infoCmt.textContent = "Use as setas abaixo do tabuleiro — ou escolha um lance na lista.";
     infoPv.innerHTML = "";
   } else {
     const m = moves[ply - 1];
@@ -1645,6 +1789,10 @@ function goToPly(ply) {
         } else if (ar.bottom > lr.bottom) {
           list.scrollTop += (ar.bottom - lr.bottom) + 8;
         }
+      } else if (isMobileShell() && state.mobileTab === "moves") {
+        // Mobile: a lista rola com a página, mas o tabuleiro fica preso no topo
+        // — dá pra acompanhar o lance ativo sem perder o board de vista.
+        followActiveMoveOnPage(active);
       }
     }
   }

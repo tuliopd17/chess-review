@@ -85,7 +85,7 @@ header h1.brand {
   flex: 0 0 auto;
 }
 header h1.brand img {
-  height: 54px;
+  height: 56px;
   width: auto;
   display: block;
 }
@@ -1093,12 +1093,14 @@ button.secondary:focus-visible {
     /* Altura de referência do tabuleiro = viewport menos tudo que o acompanha
        (header, footer, barras dos jogadores, controles, comentário do lance e
        os gaps). +32px porque --panel-max inclui a coluna da eval bar.
-       A constante caiu de 344 pra 200 quando esse cortejo foi enxugado (ver o
-       bloco de uma-tela-só logo abaixo) e o comentário do lance saiu daqui pra
-       coluna da direita — o tabuleiro cresceu ~150px em 1440x900. Se você mexer
-       na altura de qualquer um deles, reajuste esta constante. */
-    --panel-max: clamp(380px, calc(100vh - 200px), 900px);
-    --panel-max: clamp(380px, calc(100dvh - 200px), 900px);
+       A constante caiu de 344 pra 168 ao longo de duas rodadas: enxugando esse
+       cortejo (ver o bloco de uma-tela-só logo abaixo) e tirando o comentário
+       do lance daqui pra coluna da direita. O tabuleiro foi de 524 pra 700px em
+       1440x900. Se você mexer na altura de QUALQUER peça daquele bloco,
+       reajuste esta constante — é a soma delas menos 32 (a coluna da eval bar,
+       que é horizontal e já está embutida no --panel-max). */
+    --panel-max: clamp(380px, calc(100vh - 169px), 1000px);
+    --panel-max: clamp(380px, calc(100dvh - 169px), 1000px);
   }
 
   main {
@@ -1152,20 +1154,23 @@ button.secondary:focus-visible {
     min-height: 0;
     overflow: hidden;
     grid-template-rows: minmax(0, 1fr);
-    padding: 10px 16px;
+    padding: 6px 16px;
   }
 
   /* ---- Tudo que divide a altura com o tabuleiro fica enxuto ----
      Aqui cada pixel economizado vira pixel de tabuleiro (é a constante do
-     --panel-max acima). Nada foi removido — só compactado. */
+     --panel-max acima). Nada foi removido — só compactado. O logo é a exceção
+     deliberada: ele ficou MAIOR, e os pixels vieram destes outros. */
   header { padding: 5px 24px; }
-  header h1.brand img { height: 42px; }
-  footer { padding: 5px 16px; font-size: 0.74rem; }
+  footer { padding: 3px 16px; font-size: 0.72rem; }
 
-  .board-section { gap: 8px; }
-  .board-stack { gap: 8px; }
-  .player-bar { padding: 5px 12px; font-size: 0.9rem; }
+  .board-section { gap: 6px; }
+  .board-stack { gap: 4px; }
+  .player-bar { padding: 2px 12px; font-size: 0.88rem; }
   .player-bar .player-disc { width: 14px; height: 14px; flex-basis: 14px; }
+  /* Ponteiro de mouse não precisa dos 44px de alvo de toque. Quem manda na
+     altura aqui é o padding, não o min-height. */
+  .controls button { padding: 5px 14px; min-height: 34px; }
 
   #move-info { padding: 7px 12px; }
   #move-classification { font-size: 1rem; margin-bottom: 2px; }
@@ -1228,9 +1233,14 @@ button.secondary:focus-visible {
        página está no topo: header do site, barras dos jogadores, controles,
        barra de abas e os gaps. É o que garante que as ABAS apareçam sem rolar
        mesmo num celular baixo (em 360x640 elas ficavam 18px fora da tela).
-       Num celular normal (844px+) esse termo nem entra: quem manda é o 100vw. */
+       Num celular normal (844px+) esse termo nem entra: quem manda é o 100vw.
+
+       `svh` e NÃO `dvh`: a unidade dinâmica muda de valor enquanto a página
+       rola (a barra de endereço do celular recolhe e volta), o que fazia o
+       tabuleiro e os painéis mudarem de tamanho o tempo todo durante o scroll.
+       `svh` é a viewport com a barra visível — um valor fixo. */
     --panel-max: min(calc(100vw - 24px), calc(100vh - 330px), 720px);
-    --panel-max: min(calc(100vw - 24px), calc(100dvh - 330px), 720px);
+    --panel-max: min(calc(100vw - 24px), calc(100svh - 330px), 720px);
   }
 
   /* Header centralizado: logo em cima, tagline embaixo. Alinhado à esquerda a
@@ -1277,21 +1287,18 @@ button.secondary:focus-visible {
     margin-inline: auto;
   }
 
-  /* ---- Barra do tabuleiro, presa no topo ---- */
+  /* ---- Bloco do tabuleiro ----
+     Rola junto com a página, de propósito. Já foi sticky com encolhimento ao
+     rolar; ficava mudando de tamanho o tempo todo e atrapalhava mais do que
+     ajudava. Agora: o tabuleiro tem UM tamanho e não muda mais; quem fica preso
+     no topo é só a barra de abas, que é barata (50px) e sempre útil. Rolando,
+     a lista de lances fica com a tela inteira. */
   .board-stack {
-    position: sticky;
-    top: 0;
-    z-index: 20;
     gap: 8px;
-    /* Sangra até as bordas da tela: parece o header de um app, e o conteúdo
-       passa por baixo sem aparecer nas beiradas. */
+    /* Sangra até as bordas da tela pro tabuleiro encostar nelas. */
     width: calc(100% + 24px);
     margin-inline: -12px;
-    padding: 8px 12px 12px;
-    /* Cancela o gap do main pra barra de abas encostar aqui embaixo. */
-    margin-bottom: -12px;
-    background: var(--bg);
-    box-shadow: 0 8px 16px -10px rgba(0, 0, 0, 0.8);
+    padding: 0 12px 4px;
   }
 
   /* Tabuleiro + eval bar de ponta a ponta da tela. No celular cada pixel de
@@ -1308,9 +1315,11 @@ button.secondary:focus-visible {
     max-width: none;
     /* Mesma conta do --panel-max (ver acima), só que de ponta a ponta: sem os
        12px de respiro de cada lado. O teto de 720px é pro tablet — em 1000px de
-       largura um tabuleiro full-bleed engoliria a tela inteira. */
+       largura um tabuleiro full-bleed engoliria a tela inteira.
+       Esse tamanho é FIXO: uma vez montada a tela, o tabuleiro não muda mais
+       (nada de `dvh`, nada de encolher com o scroll). */
     width: min(100vw, calc(100vh - 330px), 720px);
-    width: min(100vw, calc(100dvh - 330px), 720px);
+    width: min(100vw, calc(100svh - 330px), 720px);
     /* Sem isso o flex-shrink padrão encolhe o tabuleiro de volta pra largura do
        container (366px em vez de 390px) e a sangria não acontece. */
     flex-shrink: 0;
@@ -1324,25 +1333,6 @@ button.secondary:focus-visible {
   /* Barras dos jogadores compactas — cada pixel aqui sai da lista de lances. */
   .player-bar { padding: 6px 10px; font-size: 0.9rem; }
   .player-bar .player-elo { font-size: 0.78rem; }
-
-  /* ---- Barra do tabuleiro colapsada ----
-     Assim que o usuário rola pra dentro do painel, o app.js liga esta classe: o
-     tabuleiro encolhe e as barras dos jogadores sumem, devolvendo ~250px pra
-     lista de lances — que é o que o produto tem de mais importante pra ler.
-     Rolou de volta pro topo, tudo volta ao tamanho cheio.
-     Sem transição de propósito: o cm-chessboard redesenha o SVG a cada mudança
-     de largura, então animar isso engasga. */
-  body.stack-collapsed .player-bar { display: none !important; }
-  body.stack-collapsed .board-stack { gap: 6px; padding-top: 6px; padding-bottom: 8px; }
-  body.stack-collapsed .board-wrap {
-    /* Cabe na metade de cima da tela; o resto é lista. */
-    width: min(64vw, 46vh, 720px);
-    width: min(64vw, 46dvh, 720px);
-  }
-  /* Encolhido ele não encosta mais nas bordas — os cantos voltam. */
-  body.stack-collapsed .board-container { border-radius: 6px; }
-  body.stack-collapsed .cm-chessboard { border-radius: 6px; clip-path: inset(0 round 6px); }
-  body.stack-collapsed .eval-bar { border-radius: 4px; }
 
   .board-tabs {
     display: flex;
@@ -1359,9 +1349,10 @@ button.secondary:focus-visible {
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
-    /* Gruda logo abaixo do tabuleiro — a altura vem do app.js (--stack-h). */
+    /* Única coisa presa no topo: some com o tabuleiro ao rolar e a barra fica,
+       então dá pra trocar de seção de qualquer ponto da página. */
     position: sticky;
-    top: var(--stack-h, 0px);
+    top: 0;
     z-index: 19;
   }
   /* Faixa opaca logo abaixo das abas: sem ela dava pra ver uma fatia do card
@@ -1387,21 +1378,14 @@ button.secondary:focus-visible {
   body[data-mtab]:not([data-mtab="report"]) #coach-card { display: none !important; }
   body[data-mtab]:not([data-mtab="engine"]) #live-engine-card { display: none !important; }
 
-  /* Na aba Importar o tabuleiro NÃO fica preso: o teclado virtual come metade
-     da tela e o campo de PGN precisa caber. As abas assumem o topo. */
-  body[data-mtab="import"] .board-stack {
-    position: static;
-    box-shadow: none;
-  }
-  body[data-mtab="import"] .board-tabs { top: 0; }
   /* O comentário do lance atual não tem o que fazer na aba de importar (e
      rouba espaço do formulário quando o teclado sobe). Volta na hora que sai. */
   body[data-mtab="import"] #move-info { display: none !important; }
 
   /* ---- Alvos de toque ----
      Vale em toda a casca de app (não só ≤600px): num celular deitado, com
-     780px de largura, os lances ainda são tocados com o dedo. */
-  /* A lista de lances é o núcleo do produto no celular — legível de relance:
+     780px de largura, os lances ainda são tocados com o dedo.
+     A lista de lances é o núcleo do produto no celular — legível de relance:
      ícone da classificação maior, linhas com altura de dedo, zebra pra não
      perder a linha ao correr o olho. */
   .move-pair { grid-template-columns: 30px 1fr 1fr; gap: 6px; margin-bottom: 2px; }
@@ -1419,19 +1403,14 @@ button.secondary:focus-visible {
   .games-list { max-height: 55vh; }
 }
 
-/* Celular deitado (ou qualquer tela muito baixa): não sobra altura pra prender
-   o tabuleiro no topo — volta pro fluxo normal e encolhe o tabuleiro. */
+/* Celular deitado (ou qualquer tela muito baixa): a largura sobra e a altura é
+   o que falta, então o tabuleiro passa a ser limitado por ela. --panel-max
+   segue a mesma conta, senão a fórmula do modo retrato esmaga os painéis. */
 @media (max-width: 1100px) and (max-height: 560px) {
-  /* Sem sticky, a página rola normal — então o tabuleiro é limitado pela
-     altura (deitado, largura sobra e altura é o que falta). --panel-max tem que
-     seguir a mesma conta, senão a fórmula do modo retrato (100dvh − 274px)
-     esmaga os painéis pra ~106px num celular deitado. */
   :root {
     --panel-max: min(calc(100vw - 24px), calc(100vh - 60px), 720px);
   }
   .board-wrap { width: min(100vw, calc(100vh - 60px), 720px); }
-  .board-stack { position: static; box-shadow: none; }
-  .board-tabs { top: 0; }
 }
 
 /* Celular: aperta espaçamentos e engorda os alvos de toque. */

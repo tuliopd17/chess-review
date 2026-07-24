@@ -97,9 +97,7 @@ function bootApp() {
   initBrandHome();
   initPromoDialog();
   initSummaryActions();
-  initMobileShell();
   initMobileTabs();
-  initStackCollapse();
   loadFromHash();
 }
 
@@ -394,10 +392,10 @@ function initTabs() {
 // Casca de app (≤1100px — celular e tablet)
 // ------------------------------------------------------------
 // Abaixo de 1100px não cabem três colunas, e a página deixa de ser uma pilha
-// infinita de cards: o tabuleiro + controles ficam presos no topo (sticky, no
-// CSS) e uma barra de abas troca o painel que rola embaixo. Nada some — os
-// quatro painéis (importar, lances, resumo, engine) continuam completos, a um
-// toque um do outro. O breakpoint tem que casar com o do style.css.
+// infinita de cards: uma barra de abas presa no topo troca o painel que rola
+// embaixo. Nada some — os quatro painéis (importar, lances, resumo, engine)
+// continuam completos, a um toque um do outro. O breakpoint tem que casar com
+// o do style.css.
 // ============================================================
 const MOBILE_SHELL_MQ = "(max-width: 1100px)";
 const MOBILE_TABS = ["import", "moves", "report", "engine"];
@@ -407,98 +405,11 @@ function isMobileShell() {
 }
 
 /**
- * Publica a altura da barra do tabuleiro em `--stack-h`. É o `top` do sticky
- * da barra de abas: sem isso as abas grudariam no topo da tela e passariam por
- * cima do tabuleiro. ResizeObserver cobre tudo que muda a altura (barras dos
- * jogadores aparecendo, banner de exploração, rotação da tela).
+ * A barra de abas fica presa no topo (`position: sticky`, no CSS). O tabuleiro
+ * rola junto com a página: ele tem UM tamanho e não muda mais depois que a tela
+ * é montada — uma versão anterior encolhia a barra ao rolar e ficava mudando de
+ * tamanho o tempo todo, o que atrapalhava mais do que ajudava.
  */
-function initMobileShell() {
-  const stack = document.getElementById("board-stack");
-  if (!stack) return;
-  const publish = () => {
-    document.documentElement.style.setProperty("--stack-h", `${Math.round(stack.offsetHeight)}px`);
-  };
-  if (typeof ResizeObserver === "function") {
-    new ResizeObserver(publish).observe(stack);
-  } else {
-    window.addEventListener("resize", publish, { passive: true });
-  }
-  window.addEventListener("orientationchange", () => setTimeout(publish, 300));
-  publish();
-}
-
-/**
- * Colapso da barra do tabuleiro ao rolar (padrão de header colapsável de app).
- *
- * Com o tabuleiro em tamanho cheio a barra fixa comia 532px de uma tela de
- * 844 — sobravam ~260px pra lista de lances, que é justamente o que o produto
- * tem de mais importante pra ler. Ao rolar pra dentro do painel o tabuleiro
- * encolhe e as barras dos jogadores somem, devolvendo ~250px. Voltou ao topo,
- * volta ao tamanho cheio.
- */
-function initStackCollapse() {
-  const EXPAND_AT = 24;     // volta ao tamanho cheio só bem perto do topo
-  let collapsed = false;
-  let queued = false;
-
-  const stackEl = document.getElementById("board-stack");
-  const mainEl = document.querySelector("main");
-
-  const apply = (v) => {
-    if (v === collapsed) return;
-    collapsed = v;
-    // Compensa a altura liberada com padding no fim da página, pra que o
-    // DOCUMENTO não mude de tamanho ao colapsar. Sem isso o browser gruda o
-    // scroll de volta quando o documento encurta, o scrollY cai abaixo do
-    // limiar de expandir e os dois estados ficam se revezando (era o que
-    // acontecia em 430x932).
-    const antes = stackEl.offsetHeight;
-    document.body.classList.toggle("stack-collapsed", v);
-    const depois = stackEl.offsetHeight;   // força reflow — leitura já é a nova
-    const sobra = Math.max(0, antes - depois);
-    mainEl.style.paddingBottom = sobra ? `${sobra}px` : "";
-
-    // O scroll anchoring do Chrome mantém o conteúdo parado na tela quando algo
-    // ACIMA dele encolhe — ou seja, ele desconta do scrollY exatamente o tanto
-    // que a barra encolheu. Isso é ótimo visualmente (nada pula), mas pode
-    // largar o scroll abaixo do limiar de expandir e fazer os dois estados se
-    // revezarem. O limiar de colapsar já é calculado pra isso não acontecer;
-    // esta rede de segurança cobre o resto (barra de endereço aparecendo,
-    // rotação da tela no meio do gesto).
-    if (v && window.scrollY < EXPAND_AT) {
-      window.scrollTo({ top: EXPAND_AT + 16, behavior: "auto" });
-    }
-  };
-
-  const evaluate = () => {
-    queued = false;
-    if (!isMobileShell()) { apply(false); return; }
-    const y = window.scrollY;
-    if (collapsed) {
-      if (y < EXPAND_AT) apply(false);
-      return;
-    }
-    // O limiar de colapsar tem que ser MAIOR do que o tanto que a barra
-    // encolhe, senão o desconto do scroll anchoring (ver apply) joga o scrollY
-    // pra baixo do limiar de expandir e os dois estados se revezam. Metade da
-    // barra expandida é folgada o bastante: ela encolhe ~40% da própria altura.
-    const limiar = Math.max(72, Math.round(stackEl.offsetHeight * 0.5));
-    // Numa página que mal rola não há o que ganhar colapsando.
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    if (y > limiar && maxScroll > 160) apply(true);
-  };
-
-  const onScroll = () => {
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(evaluate);
-  };
-
-  window.addEventListener("scroll", onScroll, { passive: true });
-  window.addEventListener("resize", onScroll, { passive: true });
-  window.matchMedia(MOBILE_SHELL_MQ).addEventListener("change", evaluate);
-  evaluate();
-}
 
 function initMobileTabs() {
   const bar = document.getElementById("board-tabs");

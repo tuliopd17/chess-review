@@ -267,12 +267,6 @@
         </div>
       </div>
 
-      <div id="move-info" style="display:none;">
-        <div id="move-classification"></div>
-        <div id="move-comment"></div>
-        <div id="move-pv"></div>
-      </div>
-
       <!-- Painel da engine ao vivo (sempre visível quando engine WASM tá pronta) -->
       <section class="card live-engine" id="live-engine-card">
         <div class="live-engine-head">
@@ -320,8 +314,19 @@
       </section>
     </section>
 
-    <!-- Direita: lista de lances -->
-    <aside class="moves-list">
+    <!-- Direita: avaliação do lance + lista de lances.
+         O agrupador existe pro DESKTOP: os dois dividem a coluna da direita
+         (é lá que o chess.com mostra o feedback do lance), o que devolve ~84px
+         de altura pro tabuleiro. No mobile ele vira `display: contents` e os
+         dois voltam a ser itens soltos, cada um no seu lugar do `order`. -->
+    <div class="review-col">
+      <div id="move-info" style="display:none;">
+        <div id="move-classification"></div>
+        <div id="move-comment"></div>
+        <div id="move-pv"></div>
+      </div>
+
+      <aside class="moves-list">
       <h2>Lances</h2>
       <div id="progress-bar" class="progress-bar" style="display:none;">
         <div class="progress-fill" id="progress-fill"></div>
@@ -341,8 +346,9 @@
             Cole um PGN ou busque pelo seu usuário do chess.com / lichess para ver cada lance classificado.
           </p>
         </div>
-      </div>
-    </aside>
+        </div>
+      </aside>
+    </div><!-- /.review-col -->
   </main>
 
   <footer>

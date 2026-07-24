@@ -1092,9 +1092,13 @@ button.secondary:focus-visible {
   :root {
     /* Altura de referência do tabuleiro = viewport menos tudo que o acompanha
        (header, footer, barras dos jogadores, controles, comentário do lance e
-       os gaps). +32px porque --panel-max inclui a coluna da eval bar. */
-    --panel-max: clamp(380px, calc(100vh - 344px), 760px);
-    --panel-max: clamp(380px, calc(100dvh - 344px), 760px);
+       os gaps). +32px porque --panel-max inclui a coluna da eval bar.
+       A constante caiu de 344 pra 200 quando esse cortejo foi enxugado (ver o
+       bloco de uma-tela-só logo abaixo) e o comentário do lance saiu daqui pra
+       coluna da direita — o tabuleiro cresceu ~150px em 1440x900. Se você mexer
+       na altura de qualquer um deles, reajuste esta constante. */
+    --panel-max: clamp(380px, calc(100vh - 200px), 900px);
+    --panel-max: clamp(380px, calc(100dvh - 200px), 900px);
   }
 
   main {
@@ -1106,6 +1110,26 @@ button.secondary:focus-visible {
     grid-template-columns: minmax(280px, 1fr) minmax(0, var(--panel-max)) minmax(280px, 1fr);
     justify-content: center;
   }
+
+  /* Coluna da direita: avaliação do lance em cima, lista de lances ocupando o
+     resto. É um flex container (e não duas linhas do grid) porque as outras
+     colunas atravessariam essas linhas e o grid distribuiria a altura delas
+     pra primeira — o card da avaliação ficava com 160px pra duas linhas de
+     texto em 1440px, e com 16px em 1101px. */
+  .review-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+    min-width: 0;
+  }
+  .review-col #move-info {
+    flex: 0 0 auto;
+    max-width: none;
+    text-align: left;
+  }
+  .review-col #move-classification { justify-content: flex-start; }
+  .review-col .moves-list { flex: 1 1 auto; min-height: 0; }
 
   /* Depois da análise o relatório é o que importa: acurácia e coach sobem, o
      formulário de importar desce pro fim da coluna. Continua inteiro — só
@@ -1128,7 +1152,25 @@ button.secondary:focus-visible {
     min-height: 0;
     overflow: hidden;
     grid-template-rows: minmax(0, 1fr);
+    padding: 10px 16px;
   }
+
+  /* ---- Tudo que divide a altura com o tabuleiro fica enxuto ----
+     Aqui cada pixel economizado vira pixel de tabuleiro (é a constante do
+     --panel-max acima). Nada foi removido — só compactado. */
+  header { padding: 5px 24px; }
+  header h1.brand img { height: 42px; }
+  footer { padding: 5px 16px; font-size: 0.74rem; }
+
+  .board-section { gap: 8px; }
+  .board-stack { gap: 8px; }
+  .player-bar { padding: 5px 12px; font-size: 0.9rem; }
+  .player-bar .player-disc { width: 14px; height: 14px; flex-basis: 14px; }
+
+  #move-info { padding: 7px 12px; }
+  #move-classification { font-size: 1rem; margin-bottom: 2px; }
+  #move-comment { font-size: 0.85rem; line-height: 1.3; margin-bottom: 3px; }
+  #move-pv { font-size: 0.8rem; }
 
   .sidebar,
   .board-section {
@@ -1168,8 +1210,10 @@ button.secondary:focus-visible {
     flex-direction: column;
     gap: 16px;
   }
-  /* Faz os cards da sidebar virarem itens diretos do main, pro `order` valer. */
-  .sidebar { display: contents; }
+  /* Faz os cards da sidebar (e a coluna da direita) virarem itens diretos do
+     main, pro `order` valer em todos eles. */
+  .sidebar,
+  .review-col { display: contents; }
   .moves-list { max-height: none; }
 
   :root {
@@ -1178,9 +1222,15 @@ button.secondary:focus-visible {
        tabuleiro, menos os 12px de respiro de cada lado — assim tudo fica na
        mesma coluna. Antes o tablet tinha três larguras diferentes na mesma
        tela: tabuleiro 694, barras 640, lista de lances 976.
-       O TABULEIRO em si ignora isso e sangra até as bordas — ver .board-wrap. */
-    --panel-max: min(calc(100vw - 24px), calc(100vh - 274px), 720px);
-    --panel-max: min(calc(100vw - 24px), calc(100dvh - 274px), 720px);
+       O TABULEIRO em si ignora isso e sangra até as bordas — ver .board-wrap.
+
+       Os 330px descontados são tudo que divide a tela com o tabuleiro quando a
+       página está no topo: header do site, barras dos jogadores, controles,
+       barra de abas e os gaps. É o que garante que as ABAS apareçam sem rolar
+       mesmo num celular baixo (em 360x640 elas ficavam 18px fora da tela).
+       Num celular normal (844px+) esse termo nem entra: quem manda é o 100vw. */
+    --panel-max: min(calc(100vw - 24px), calc(100vh - 330px), 720px);
+    --panel-max: min(calc(100vw - 24px), calc(100dvh - 330px), 720px);
   }
 
   /* Header centralizado: logo em cima, tagline embaixo. Alinhado à esquerda a
@@ -1256,10 +1306,11 @@ button.secondary:focus-visible {
      transbordo sair simétrico) é o align-items:center da .board-stack. */
   .board-wrap {
     max-width: none;
-    /* O teto de 720px é pro tablet: em 1000px de largura um tabuleiro de ponta
-       a ponta engoliria a tela inteira. No celular quem manda é o 100vw. */
-    width: min(100vw, calc(100vh - 274px), 720px);
-    width: min(100vw, calc(100dvh - 274px), 720px);
+    /* Mesma conta do --panel-max (ver acima), só que de ponta a ponta: sem os
+       12px de respiro de cada lado. O teto de 720px é pro tablet — em 1000px de
+       largura um tabuleiro full-bleed engoliria a tela inteira. */
+    width: min(100vw, calc(100vh - 330px), 720px);
+    width: min(100vw, calc(100dvh - 330px), 720px);
     /* Sem isso o flex-shrink padrão encolhe o tabuleiro de volta pra largura do
        container (366px em vez de 390px) e a sangria não acontece. */
     flex-shrink: 0;
@@ -1270,8 +1321,32 @@ button.secondary:focus-visible {
   .cm-chessboard { border-radius: 0; clip-path: none; }
   .eval-bar { border-radius: 0 4px 4px 0; }
 
+  /* Barras dos jogadores compactas — cada pixel aqui sai da lista de lances. */
+  .player-bar { padding: 6px 10px; font-size: 0.9rem; }
+  .player-bar .player-elo { font-size: 0.78rem; }
+
+  /* ---- Barra do tabuleiro colapsada ----
+     Assim que o usuário rola pra dentro do painel, o app.js liga esta classe: o
+     tabuleiro encolhe e as barras dos jogadores sumem, devolvendo ~250px pra
+     lista de lances — que é o que o produto tem de mais importante pra ler.
+     Rolou de volta pro topo, tudo volta ao tamanho cheio.
+     Sem transição de propósito: o cm-chessboard redesenha o SVG a cada mudança
+     de largura, então animar isso engasga. */
+  body.stack-collapsed .player-bar { display: none !important; }
+  body.stack-collapsed .board-stack { gap: 6px; padding-top: 6px; padding-bottom: 8px; }
+  body.stack-collapsed .board-wrap {
+    /* Cabe na metade de cima da tela; o resto é lista. */
+    width: min(64vw, 46vh, 720px);
+    width: min(64vw, 46dvh, 720px);
+  }
+  /* Encolhido ele não encosta mais nas bordas — os cantos voltam. */
+  body.stack-collapsed .board-container { border-radius: 6px; }
+  body.stack-collapsed .cm-chessboard { border-radius: 6px; clip-path: inset(0 round 6px); }
+  body.stack-collapsed .eval-bar { border-radius: 4px; }
+
   .board-tabs {
     display: flex;
+    position: relative;   /* âncora da faixa opaca (::after) */
     gap: 4px;
     width: 100%;
     /* Acompanha o tabuleiro, mas nunca abaixo de 320px: com o board limitado
@@ -1288,6 +1363,17 @@ button.secondary:focus-visible {
     position: sticky;
     top: var(--stack-h, 0px);
     z-index: 19;
+  }
+  /* Faixa opaca logo abaixo das abas: sem ela dava pra ver uma fatia do card
+     de baixo passando no vão de 12px enquanto a página rola. */
+  .board-tabs::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: -12px;
+    right: -12px;
+    height: 13px;
+    background: var(--bg);
   }
 
   /* ---- Um painel por vez ----
@@ -1315,8 +1401,13 @@ button.secondary:focus-visible {
   /* ---- Alvos de toque ----
      Vale em toda a casca de app (não só ≤600px): num celular deitado, com
      780px de largura, os lances ainda são tocados com o dedo. */
-  .move-pair { grid-template-columns: 30px 1fr 1fr; gap: 6px; margin-bottom: 3px; }
-  .move-cell { padding: 9px 8px; min-height: 40px; font-size: 0.92rem; }
+  /* A lista de lances é o núcleo do produto no celular — legível de relance:
+     ícone da classificação maior, linhas com altura de dedo, zebra pra não
+     perder a linha ao correr o olho. */
+  .move-pair { grid-template-columns: 30px 1fr 1fr; gap: 6px; margin-bottom: 2px; }
+  .move-pair:nth-child(odd) { background: rgba(255, 255, 255, 0.018); border-radius: 4px; }
+  .move-cell { padding: 9px 8px; min-height: 42px; font-size: 0.95rem; font-weight: 500; }
+  .move-cell .cls-icon svg { width: 20px; height: 20px; }
   .game-item { padding: 11px 10px; min-height: 44px; }
   .engine-line { padding: 9px 8px; grid-template-columns: 52px 1fr; }
   #coach-critical .critical-item { padding: 9px 8px; min-height: 42px; font-size: 0.9rem; }

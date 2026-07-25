@@ -52,10 +52,18 @@
   box-sizing: border-box;
 }
 
-html, body {
+html {
+  -webkit-text-size-adjust: 100%;
   max-width: 100%;
-  overflow-x: hidden;
   width: 100%;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
+  /* `clip` e não só `hidden`: overflow-x:hidden faz do elemento um contêiner
+     de rolagem e o position:sticky dos filhos ancora NELE (não na viewport).
+     No Safari iOS o tabuleiro deixa de grudar no topo. `clip` recorta igual
+     sem criar contêiner de rolagem. `hidden` fica como fallback. */
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
@@ -69,6 +77,11 @@ body {
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  max-width: 100%;
+  width: 100%;
+  overscroll-behavior-x: none;
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 img, svg, canvas {
@@ -622,8 +635,10 @@ button.danger:hover {
 }
 
 #board {
+  position: relative;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 .cm-chessboard {
@@ -681,6 +696,7 @@ button.danger:hover {
   inset: 0;
   pointer-events: none;
   z-index: 10;
+  overflow: hidden; /* badge no canto (h8/a8) não vaza e não empurra o scrollX */
 }
 
 .cls-badge {
@@ -1377,8 +1393,11 @@ button.secondary:hover {
   .moves-list { max-height: none; }
 
   :root {
-    --panel-max: min(calc(100vw - 24px), calc(100vh - 330px), 720px);
-    --panel-max: min(calc(100vw - 24px), calc(100svh - 330px), 720px);
+    /* 100% (não 100vw): no mobile 100vw costuma ser uns px maior que a área
+       útil e gera overflow horizontal alternado ao mudar o lance (badge/seta
+       de um lado ou do outro). A % resolve no elemento que usa o token. */
+    --panel-max: min(100%, calc(100vh - 330px), 720px);
+    --panel-max: min(100%, calc(100svh - 330px), 720px);
   }
 
   header {
@@ -1414,21 +1433,24 @@ button.secondary:hover {
     margin-inline: auto;
   }
 
-  /* Board Stack Sticky no Topo Mobile */
+  /* Board Stack Sticky no Topo Mobile
+     Tabuleiro + barras + controles + abas num único sticky. Sem transform /
+     will-change: essas propriedades criam layer GPU e no iOS o tabuleiro
+     "treme" subpixel pra esquerda/direita a cada re-render do lance. */
   .board-stack {
     position: sticky;
     top: 0;
     z-index: 30;
     gap: 6px;
     width: 100%;
+    max-width: 100%;
     margin: 0;
     padding: 4px 0 8px;
     background: var(--bg);
     box-shadow: 0 8px 16px -6px rgba(0, 0, 0, 0.85);
     box-sizing: border-box;
     overflow: hidden;
-    transform: translateZ(0);
-    will-change: transform;
+    touch-action: pan-y;
   }
 
   .board-wrap {
@@ -1439,14 +1461,13 @@ button.secondary:hover {
     flex-shrink: 0;
     gap: 6px;
     margin: 0 auto;
-    transform: translateZ(0);
   }
 
   .board-container {
     border-radius: 0;
     box-sizing: border-box;
     overflow: hidden;
-    transform: translateZ(0);
+    touch-action: manipulation;
   }
   #board, .cm-chessboard {
     width: 100%;
@@ -1454,7 +1475,6 @@ button.secondary:hover {
     border-radius: 0;
     clip-path: none;
     box-sizing: border-box;
-    transform: translateZ(0);
   }
   .eval-bar { border-radius: 0 4px 4px 0; }
 

@@ -497,22 +497,38 @@ function clearMobileTabFlags() {
  * tabuleiro "sobe" junto com o scroll. Por isso o primeiro passo aqui é
  * encostar a barra no topo: a partir do primeiro lance o tabuleiro assume a
  * posição definitiva dele e não se mexe mais — só a lista embaixo.
+ *
+ * Também zera scrollX: overflow residual (badge/seta no canto) faz o iOS
+ * "pular" a página pra esquerda/direita a cada lance.
  */
 function followActiveMoveOnPage(cell) {
-  if (!cell) return;
+  if (!isMobileShell()) return;
+
   const stack = document.getElementById("board-stack");
   const y = window.scrollY;
-  const topo = (stack ? stack.offsetHeight : 0) + 8;
-  const base = window.innerHeight - 8;
-  const r = cell.getBoundingClientRect();
+  const x = window.scrollX || 0;
 
-  // Rola apenas se o elemento ativo estiver cortado acima do topo útil ou abaixo do rodapé
-  if (r.top < topo) {
-    const alvo = Math.max(0, Math.round(y - (topo - r.top) - 12));
-    if (Math.abs(alvo - y) > 2) window.scrollTo({ top: alvo, behavior: "auto" });
-  } else if (r.bottom > base) {
-    const alvo = Math.max(0, Math.round(y + (r.bottom - base) + 12));
-    if (Math.abs(alvo - y) > 2) window.scrollTo({ top: alvo, behavior: "auto" });
+  // 1) Encosta a barra sticky no topo (some com o header). Usa a posição da
+  //    barra no DOCUMENTO — altura do header ignora o padding do <main>.
+  const stackTopDoc = stack ? Math.round(stack.getBoundingClientRect().top + y) : 0;
+  let alvo = Math.max(y, stackTopDoc);
+  const empurrao = alvo - y;
+
+  // 2) Com a barra fixa, mantém o lance ativo na área útil abaixo dela.
+  if (cell) {
+    const topo = (stack ? stack.offsetHeight : 0) + 8;
+    const base = window.innerHeight - 8;
+    const r = cell.getBoundingClientRect();
+    const cellTop = r.top - empurrao;
+    const cellBottom = r.bottom - empurrao;
+    if (cellTop < topo) alvo -= (topo - cellTop);
+    else if (cellBottom > base) alvo += (cellBottom - base);
+  }
+
+  // Sem animação: ◀/▶ rápido não pode virar fila de scrolls suaves.
+  alvo = Math.max(0, Math.round(alvo));
+  if (Math.abs(alvo - y) > 1 || Math.abs(x) > 0) {
+    window.scrollTo({ top: alvo, left: 0, behavior: "auto" });
   }
 }
 
@@ -1818,13 +1834,13 @@ function goToPly(ply) {
 
   // Lista de lances — destacar ativo.
   document.querySelectorAll(".move-cell").forEach(c => c.classList.remove("active"));
+  let active = null;
   if (ply > 0) {
-    const active = document.querySelector(`.move-cell[data-ply="${ply}"]`);
+    active = document.querySelector(`.move-cell[data-ply="${ply}"]`);
     if (active) {
       active.classList.add("active");
-      // Rola APENAS dentro da lista de lances, nunca a página. No mobile a lista
-      // não tem scroll próprio (max-height:none), então não rola nada — evita a
-      // tela "descer" ao passar os lances. (scrollIntoView mexia na página toda.)
+      // Desktop: rola só dentro da lista (scroll próprio). No mobile a lista
+      // não tem max-height — o acompanhamento de página roda abaixo.
       const list = document.querySelector(".moves-list");
       if (list && list.scrollHeight > list.clientHeight + 1) {
         const lr = list.getBoundingClientRect();
@@ -1841,6 +1857,14 @@ function goToPly(ply) {
   updateEvalBar(ply);
   renderPlayerBars();
   renderBoardOverlays();
+
+  // Mobile: gruda o tabuleiro no topo e acompanha o lance ativo sob a barra.
+  // rAF: o card de avaliação (#move-info) pode ter mudado de altura neste
+  // tick ("Melhor linha" aparece/some) — medir antes deixava o lance cortado.
+  if (isMobileShell()) {
+    const cell = state.mobileTab === "moves" ? active : null;
+    requestAnimationFrame(() => followActiveMoveOnPage(cell));
+  }
 
   // Dispara análise ao vivo da posição atual (se engine WASM tá pronta E não
   // estamos no meio da análise da partida).

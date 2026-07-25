@@ -739,7 +739,6 @@ button.danger:hover {
 .controls button:hover {
   background: var(--bg-elevated);
   border-color: var(--border-light);
-  transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -783,7 +782,8 @@ button.danger:hover {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
   text-align: center;
-  transition: all 0.25s ease;
+  min-height: 76px;
+  transition: border-color 0.15s ease, background 0.15s ease;
   position: relative;
   overflow: hidden;
 }

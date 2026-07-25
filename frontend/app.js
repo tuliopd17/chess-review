@@ -499,31 +499,21 @@ function clearMobileTabFlags() {
  * posição definitiva dele e não se mexe mais — só a lista embaixo.
  */
 function followActiveMoveOnPage(cell) {
+  if (!cell) return;
   const stack = document.getElementById("board-stack");
   const y = window.scrollY;
-
-  // 1) Fixa a barra do tabuleiro no topo, se ainda não estiver. O ponto exato é
-  //    a posição dela no DOCUMENTO — não dá pra usar a altura do header, que
-  //    ignora o padding do <main> (dava 100px em vez de 112 e o tabuleiro
-  //    parava 12px abaixo do lugar definitivo).
-  const stackTopDoc = stack ? Math.round(stack.getBoundingClientRect().top + y) : 0;
-  let alvo = Math.max(y, stackTopDoc);
-  const empurrao = alvo - y;   // quanto o conteúdo sobe por causa desse passo
-
-  // 2) Com a barra fixa, o topo útil é logo abaixo dela. As coordenadas do
-  //    lance são as de agora menos o empurrão do passo 1.
   const topo = (stack ? stack.offsetHeight : 0) + 8;
   const base = window.innerHeight - 8;
   const r = cell.getBoundingClientRect();
-  const cellTop = r.top - empurrao;
-  const cellBottom = r.bottom - empurrao;
-  if (cellTop < topo) alvo -= (topo - cellTop);
-  else if (cellBottom > base) alvo += (cellBottom - base);
 
-  // Sem animação: passar lances rápido no ◀/▶ não pode virar uma fila de
-  // scrolls suaves brigando entre si.
-  alvo = Math.max(0, Math.round(alvo));
-  if (alvo !== y) window.scrollTo({ top: alvo, behavior: "auto" });
+  // Rola apenas se o elemento ativo estiver cortado acima do topo útil ou abaixo do rodapé
+  if (r.top < topo) {
+    const alvo = Math.max(0, Math.round(y - (topo - r.top) - 12));
+    if (Math.abs(alvo - y) > 2) window.scrollTo({ top: alvo, behavior: "auto" });
+  } else if (r.bottom > base) {
+    const alvo = Math.max(0, Math.round(y + (r.bottom - base) + 12));
+    if (Math.abs(alvo - y) > 2) window.scrollTo({ top: alvo, behavior: "auto" });
+  }
 }
 
 function initControls() {

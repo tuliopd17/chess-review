@@ -52,10 +52,10 @@
   box-sizing: border-box;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
-  overscroll-behavior-y: contain;
-  scroll-behavior: smooth;
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 body {
@@ -69,8 +69,6 @@ body {
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
-  overflow-x: clip;
 }
 
 img, svg, canvas {
@@ -808,6 +806,15 @@ button.danger:hover {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+#move-classification .cls-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 #move-comment {
@@ -1413,19 +1420,22 @@ button.secondary:hover {
     top: 0;
     z-index: 30;
     gap: 6px;
-    width: calc(100% + 24px);
-    margin-inline: -12px;
-    padding: 4px 12px 8px;
+    width: 100%;
+    margin-inline: 0;
+    padding: 4px 0 8px;
     background: var(--bg);
     box-shadow: 0 8px 16px -6px rgba(0, 0, 0, 0.85);
+    box-sizing: border-box;
+    overflow-x: hidden;
   }
 
   .board-wrap {
-    max-width: none;
-    width: min(100vw, calc(100vh - 330px), 720px);
-    width: min(100vw, calc(100svh - 330px), 720px);
+    max-width: 100%;
+    width: min(100%, calc(100vh - 330px), 720px);
+    width: min(100%, calc(100svh - 330px), 720px);
     flex-shrink: 0;
     gap: 6px;
+    margin-inline: auto;
   }
 
   .board-container { border-radius: 0; }

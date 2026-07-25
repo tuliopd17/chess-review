@@ -1834,14 +1834,6 @@ function goToPly(ply) {
         } else if (ar.bottom > lr.bottom) {
           list.scrollTop += (ar.bottom - lr.bottom) + 8;
         }
-      } else if (isMobileShell() && state.mobileTab === "moves") {
-        // Mobile: a lista rola com a página, mas o tabuleiro fica preso no topo
-        // — dá pra acompanhar o lance ativo sem perder o board de vista.
-        // Num frame à frente de propósito: o card de avaliação logo acima da
-        // lista acabou de trocar de conteúdo e pode ter mudado de altura
-        // (linha "Melhor linha" aparece/some). Medir antes desse ajuste dava
-        // conta errada e deixava o lance meio escondido no rodapé.
-        requestAnimationFrame(() => followActiveMoveOnPage(active));
       }
     }
   }

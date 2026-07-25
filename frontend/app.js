@@ -98,6 +98,7 @@ function bootApp() {
   initPromoDialog();
   initSummaryActions();
   initMobileTabs();
+  initBoardSwipe();
   loadFromHash();
 }
 
@@ -592,6 +593,40 @@ function initControls() {
     if (e.key === "End")        navActions.end();
     if (e.key === "f" || e.key === "F") navActions.flip();
   });
+}
+
+function initBoardSwipe() {
+  const container = document.querySelector(".board-container");
+  if (!container) return;
+  let startX = 0;
+  let startY = 0;
+  let startTime = 0;
+
+  container.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1) return;
+    // Não ativa swipe se o toque foi em uma peça (preserva drag and drop do cm-chessboard)
+    if (e.target.closest(".piece") || e.target.closest(".cm-chessboard-piece")) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startTime = Date.now();
+  }, { passive: true });
+
+  container.addEventListener("touchend", (e) => {
+    if (!startX || e.changedTouches.length !== 1) return;
+    const diffX = e.changedTouches[0].clientX - startX;
+    const diffY = e.changedTouches[0].clientY - startY;
+    const duration = Date.now() - startTime;
+    startX = 0;
+
+    // Swipe horizontal fluido (<400ms, >40px horizontal, movimento vertical contido)
+    if (duration < 400 && Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.4) {
+      if (diffX < 0) {
+        goToPly(state.currentPly + 1);
+      } else {
+        goToPly(state.currentPly - 1);
+      }
+    }
+  }, { passive: true });
 }
 
 function initImportButtons() {
@@ -1350,6 +1385,13 @@ function renderPlayerBars() {
     return null;
   };
 
+  // Determina quem tem a vez no lance atual
+  const moves = currentMoves();
+  let turnColor = "white";
+  if (state.currentPly > 0 && moves[state.currentPly - 1]) {
+    turnColor = moves[state.currentPly - 1].color === "white" ? "black" : "white";
+  }
+
   // Quem fica embaixo depende da orientação. Padrão "white" = brancas embaixo.
   const whiteDown = state.orientation === "white";
   const top    = whiteDown ? { color: "black", name: blackName, elo: blackElo } : { color: "white", name: whiteName, elo: whiteElo };
@@ -1359,8 +1401,11 @@ function renderPlayerBars() {
     const elo = p.elo ? `<span class="player-elo">(${escapeHtml(String(p.elo))})</span>` : "";
     const r = resultFor(p.color);
     const chip = r ? `<span class="player-result ${r.cls}">${r.label}</span>` : "";
+    const isTurn = turnColor === p.color && moves.length > 0 && state.currentPly < moves.length;
+    const turnDot = isTurn ? `<span class="player-turn-dot" title="Vez de jogar"></span>` : "";
     return `<span class="player-disc ${p.color}"></span>
             <span class="player-name">${escapeHtml(p.name)}</span>
+            ${turnDot}
             ${elo}
             ${chip}`;
   };
@@ -1812,6 +1857,7 @@ function goToPly(ply) {
   }
 
   updateEvalBar(ply);
+  renderPlayerBars();
   renderBoardOverlays();
 
   // Dispara análise ao vivo da posição atual (se engine WASM tá pronta E não

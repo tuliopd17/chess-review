@@ -8,18 +8,18 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Consolas, monospace;
 
-  /* Cores de Superfície (Tema Escuro Xadrez Premium) */
-  --bg: #181715;
-  --bg-card: #22201d;
-  --bg-elevated: #2d2b27;
-  --bg-active: #393631;
-  --text: #f0eee9;
-  --text-muted: #a19f99;
+  /* Paleta Inspirada no Chess.com (Original) */
+  --bg: #312e2b;
+  --bg-card: #272522;
+  --bg-elevated: #3a3835;
+  --bg-active: #4a4744;
+  --text: #e8e6e3;
+  --text-muted: #9d9b98;
   --accent: #81b64c;
   --accent-dark: #6a9a3d;
   --accent-glow: rgba(129, 182, 76, 0.25);
-  --border: rgba(255, 255, 255, 0.08);
-  --border-light: rgba(255, 255, 255, 0.14);
+  --border: #1f1d1b;
+  --border-light: rgba(255, 255, 255, 0.08);
   --danger: #ca3431;
 
   /* Classificações estilo Game Review */
@@ -36,16 +36,16 @@
   --c-miss:       #e0688a;
 
   /* Highlights do tabuleiro */
-  --hl-last:    rgba(255, 217, 87, 0.38);
+  --hl-last:    rgba(255, 217, 87, 0.35);
   --hl-arrow-good: #81b64c;
   --hl-arrow-bad:  #ca3431;
 
   /* Painel principal e elevação */
   --panel-max: 560px;
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.24);
-  --shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.45);
-  --radius: 12px;
-  --radius-sm: 8px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.18);
+  --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --radius: 10px;
+  --radius-sm: 6px;
 }
 
 * {
@@ -82,16 +82,14 @@ img, svg, canvas {
    ============================================================ */
 
 header {
-  padding: 12px 24px;
-  background: rgba(34, 32, 29, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding: 14px 24px;
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 20px;
+  gap: 6px 16px;
   position: relative;
   z-index: 50;
 }

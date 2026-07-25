@@ -1753,17 +1753,20 @@ function goToPly(ply) {
   }
 
   // Info — revela a caixa (fica escondida até existir partida pra mostrar).
-  document.getElementById("move-info").style.display = "";
+  const moveInfoEl = document.getElementById("move-info");
+  if (moveInfoEl) moveInfoEl.style.display = "";
   const infoCls = document.getElementById("move-classification");
   const infoCmt = document.getElementById("move-comment");
   const infoPv  = document.getElementById("move-pv");
   if (ply === 0) {
+    if (moveInfoEl) moveInfoEl.removeAttribute("data-cls");
     infoCls.innerHTML = "Posição inicial";
     infoCls.className = "";
     infoCmt.textContent = "Use as setas abaixo do tabuleiro — ou escolha um lance na lista.";
     infoPv.innerHTML = "";
   } else {
     const m = moves[ply - 1];
+    if (moveInfoEl) moveInfoEl.setAttribute("data-cls", m.classification);
     const iconHtml = CLASS_ICONS[m.classification] ? CLASS_ICONS[m.classification](22) : "";
     const label = CLASS_LABELS[m.classification] || m.classification;
     infoCls.innerHTML = `${iconHtml} <span class="cls-label ${m.classification}">${m.move_number}${m.color === "white" ? "." : "..."} ${escapeHtml(m.san)} — ${label}</span>`;
@@ -1772,7 +1775,7 @@ function goToPly(ply) {
     // Linha sugerida pelo engine.
     if (m.best_pv_san?.length && m.classification !== "best" && m.classification !== "book") {
       const pvHtml = m.best_pv_san.map((s, i) => i === 0 ? `<strong>${escapeHtml(s)}</strong>` : escapeHtml(s)).join(" ");
-      infoPv.innerHTML = `<span style="color:var(--accent);">Melhor linha:</span> ${pvHtml}`;
+      infoPv.innerHTML = `<span style="color:var(--accent);font-weight:600;">Melhor linha:</span> ${pvHtml}`;
     } else {
       infoPv.innerHTML = "";
     }

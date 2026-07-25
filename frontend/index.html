@@ -84,11 +84,10 @@
   <link rel="modulepreload" href="/static/vendor/cm-chessboard/src/extensions/markers/Markers.js" />
   <link rel="modulepreload" href="/static/vendor/cm-chessboard/src/extensions/arrows/Arrows.js" />
 
-  <!-- chess.js (validação de lances no modo exploração). defer: baixa já, executa
-       depois do parse, sem bloquear o primeiro paint. -->
-  <script defer src="/static/vendor/chess-0.10.3.min.js"></script>
-  <!-- Highcharts NÃO é carregado aqui: é pesado (~374KB) e o gráfico de eval só
-       aparece DEPOIS da análise. É lazy-loaded sob demanda no app.js. -->
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
   <!-- Tailwind (utilitários purgados, self-hosted). Vem ANTES do style.css: o
        style.css é unlayered e tem prioridade, então os componentes à mão seguem

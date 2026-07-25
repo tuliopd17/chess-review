@@ -1,82 +1,99 @@
-/* Paleta inspirada no chess.com */
+/* ============================================================
+   Chess Review — Design System & Main Stylesheet
+   Design modernizado para Desktop & Mobile
+   ============================================================ */
+
 :root {
-  --bg: #312e2b;
-  --bg-card: #272522;
-  --bg-elevated: #3a3835;
-  --text: #e8e6e3;
-  --text-muted: #9d9b98;
+  /* Tipografia */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Consolas, monospace;
+
+  /* Cores de Superfície (Tema Escuro Xadrez Premium) */
+  --bg: #181715;
+  --bg-card: #22201d;
+  --bg-elevated: #2d2b27;
+  --bg-active: #393631;
+  --text: #f0eee9;
+  --text-muted: #a19f99;
   --accent: #81b64c;
   --accent-dark: #6a9a3d;
-  --border: #1f1d1b;
+  --accent-glow: rgba(129, 182, 76, 0.25);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.14);
   --danger: #ca3431;
 
-  /* Cores das classificações (alinhadas ao Game Review do chess.com) */
+  /* Classificações estilo Game Review */
   --c-brilliant:  #26c2a3;
   --c-great:      #5c8bb0;
   --c-best:       #81b64c;
   --c-excellent:  #95bb5a;
   --c-good:       #b0c98c;
   --c-book:       #a88865;
+  --c-forced:     #9b9b95;
   --c-inaccuracy: #f4bf3f;
   --c-mistake:    #ef9234;
   --c-blunder:    #ca3431;
   --c-miss:       #e0688a;
 
   /* Highlights do tabuleiro */
-  --hl-last:    rgba(255, 217, 87, 0.35);   /* amarelo translúcido estilo Lichess */
+  --hl-last:    rgba(255, 217, 87, 0.38);
   --hl-arrow-good: #81b64c;
   --hl-arrow-bad:  #ca3431;
 
-  /* Largura máxima dos painéis centrais (tabuleiro, gráfico, engine). */
+  /* Painel principal e elevação */
   --panel-max: 560px;
-  /* Elevação dos cards (sombra sutil estilo chess.com). */
-  --shadow-card: 0 1px 2px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.18);
-  --radius: 10px;
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --radius: 12px;
+  --radius-sm: 8px;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 html {
   -webkit-text-size-adjust: 100%;
-  /* Evita que o pull-to-refresh do Android/Chrome recarregue a página e jogue
-     fora uma análise em curso. Scroll normal e pinch-zoom seguem funcionando. */
   overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  min-height: 100dvh;        /* desconta a barra de endereço dinâmica no mobile */
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Nada de scroll horizontal acidental no mobile.
-     `clip` e não `hidden`: `overflow: hidden` faz do body um contêiner de
-     rolagem, e aí o `position: sticky` dos filhos passa a se ancorar NELE em
-     vez da viewport — a barra do tabuleiro para de grudar no topo e sai da
-     tela ao rolar. O Chrome disfarça (propaga o overflow do body pra viewport),
-     o Safari do iPhone não. `clip` recorta igual sem criar contêiner de
-     rolagem, então o sticky continua valendo. A linha `hidden` fica como
-     fallback pra quem não conhece `clip`. */
   overflow-x: hidden;
   overflow-x: clip;
 }
 
-img, svg, canvas { max-width: 100%; }
+img, svg, canvas {
+  max-width: 100%;
+}
+
+/* ============================================================
+   Header (Cabeçalho do App)
+   ============================================================ */
 
 header {
-  padding: 14px 24px;
-  background: var(--bg-card);
+  padding: 12px 24px;
+  background: rgba(34, 32, 29, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.25);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: 8px 20px;
+  position: relative;
+  z-index: 50;
 }
 
 header h1 {
@@ -87,60 +104,91 @@ header h1 {
   letter-spacing: -0.01em;
 }
 
-/* Logo (imagem) no lugar do título de texto. */
 header h1.brand {
-  line-height: 0;          /* tira o espaço extra abaixo da imagem inline */
+  line-height: 0;
   flex: 0 0 auto;
 }
+
 header h1.brand img {
-  height: 56px;
+  height: 52px;
   width: auto;
   display: block;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
 }
-/* Logo clicavel = voltar pra home (F5). Hover sutil pra indicar a interacao. */
+
 header h1.brand a {
   display: inline-block;
   line-height: 0;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   -webkit-tap-highlight-color: transparent;
 }
-header h1.brand a:hover { opacity: 0.85; }
-header h1.brand a:active { transform: scale(0.98); }
-header h1.brand a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+
+header h1.brand a:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+header h1.brand a:active {
+  transform: scale(0.98);
+}
+
+header h1.brand a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
 
 .tagline {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 500;
   flex: 1 1 200px;
+  letter-spacing: -0.01em;
 }
 
+/* Badges de Status */
 .badge {
   padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.badge-ok { background: var(--accent); color: white; }
-.badge-error { background: var(--danger); color: white; }
-.badge-loading { background: var(--bg-elevated); color: var(--text-muted); }
+
+.badge-ok {
+  background: rgba(129, 182, 76, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(129, 182, 76, 0.3);
+}
+
+.badge-error {
+  background: rgba(202, 52, 49, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(202, 52, 49, 0.3);
+}
+
+.badge-loading {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* ============================================================
+   Layout Principal (Desktop 3 Colunas)
+   ============================================================ */
 
 main {
   flex: 1;
   display: grid;
-  /* Coluna central FIXA no tamanho ideal do tabuleiro (--panel-max) e laterais
-     FLEXÍVEIS (1fr) que absorvem a sobra. Assim o tabuleiro (herói) fica sempre
-     centralizado e do tamanho ideal — SEM sobra morta dos lados em telas largas —
-     e cresce quando as laterais batem no mínimo (300px) em telas estreitas. */
-  grid-template-columns: minmax(340px, 1fr) minmax(0, var(--panel-max)) minmax(340px, 1fr);
-  /* Gutter pra afastar o tabuleiro das laterais. As colunas laterais têm mínimo
-     de 340px (pra não espremer o card de importar — os botões precisam caber numa
-     linha só), então o gap fica nesse intervalo confortável. No mobile o ≤1100
-     redefine o gap. */
-  column-gap: clamp(28px, 3.5vw, 56px);
+  grid-template-columns: minmax(320px, 1fr) minmax(0, var(--panel-max)) minmax(320px, 1fr);
+  column-gap: clamp(24px, 3.5vw, 48px);
   row-gap: 16px;
-  padding: 16px;
-  max-width: 1500px;
+  padding: 20px;
+  max-width: 1560px;
   margin: 0 auto;
   width: 100%;
 }
@@ -152,139 +200,255 @@ main {
   min-width: 0;
 }
 
+/* Cards Genéricos */
 .card {
   background: var(--bg-card);
   border-radius: var(--radius);
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 18px;
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .card h2 {
-  margin: 0 0 12px;
-  font-size: 1.1rem;
-  color: var(--accent);
+  margin: 0 0 14px;
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+/* ============================================================
+   Abas do Card de Importar (Segmented Control)
+   ============================================================ */
 
 .tabs {
   display: flex;
-  gap: 0;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  gap: 4px;
+  margin-bottom: 14px;
+  background: var(--bg-elevated);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
 }
 
 .tab-btn {
-  background: none;
+  flex: 1 1 0;
+  background: transparent;
   border: none;
   color: var(--text-muted);
-  /* Compacto de propósito: as quatro abas (chess.com/lichess/PGN/histórico)
-     precisam caber numa linha só mesmo na coluna lateral mais estreita
-     (280px em 1101px de viewport) — senão "histórico" era cortado. */
-  padding: 8px 6px;
+  padding: 8px 10px;
   cursor: pointer;
-  font-size: 0.83rem;
+  font-size: 0.84rem;
+  font-weight: 600;
   white-space: nowrap;
-  border-bottom: 2px solid transparent;
+  border-radius: 7px;
+  transition: all 0.15s ease;
+  text-align: center;
 }
+
+.tab-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .tab-btn.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--bg-card);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  font-weight: 700;
 }
 
-.tab-panel { display: none; }
-.tab-panel.active { display: block; }
+.tab-panel {
+  display: none;
+}
 
+.tab-panel.active {
+  display: block;
+}
+
+/* Formulários e Entradas */
 textarea, input[type="text"] {
   width: 100%;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 8px;
-  border-radius: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
   font-family: inherit;
   font-size: 0.9rem;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+textarea:focus, input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 textarea {
-  min-height: 160px;
+  min-height: 140px;
   resize: vertical;
-  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
+/* Botões */
 button {
   background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 9px 14px;
-  border-radius: 6px;
+  padding: 9px 16px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: background 0.12s ease, transform 0.05s ease, box-shadow 0.12s ease;
-  /* Desativa o double-tap-to-zoom (pinch-zoom continua funcionando) — evita zoom
-     acidental ao tocar 2x rapido nos botoes, ex.: passar lances no celular. */
-  touch-action: manipulation;
-}
-button:hover { background: #4a4744; }
-button:active { transform: translateY(1px); }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button.primary {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent-dark);
+  font-size: 0.88rem;
   font-weight: 600;
-  box-shadow: 0 2px 0 var(--accent-dark);
-}
-button.primary:hover { background: #8cc257; }
-button.primary:active { box-shadow: none; }
-button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
-button.danger:hover { background: var(--danger); color: white; }
-
-/* Mesma proteção contra double-tap-zoom nos demais elementos clicáveis. */
-.move-cell, .game-item, .engine-line, .critical-item, .file-label {
+  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
   touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
-.row { display: flex; gap: 8px; align-items: center; }
-.row > * { flex: 1; }
+button:hover {
+  background: #393631;
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button.primary {
+  background: linear-gradient(180deg, #8cc257 0%, #75a842 100%);
+  color: #ffffff;
+  border: 1px solid #649337;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(129, 182, 76, 0.35);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+button.primary:hover {
+  background: linear-gradient(180deg, #96cd5e 0%, #7db348 100%);
+  box-shadow: 0 4px 14px rgba(129, 182, 76, 0.45);
+  transform: translateY(-1px);
+}
+
+button.primary:active {
+  box-shadow: 0 1px 3px rgba(129, 182, 76, 0.2);
+  transform: translateY(0);
+}
+
+button.danger {
+  background: rgba(202, 52, 49, 0.1);
+  color: var(--danger);
+  border-color: rgba(202, 52, 49, 0.3);
+}
+
+button.danger:hover {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.row > * {
+  flex: 1;
+}
 
 .file-label {
-  display: inline-block;
-  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   text-align: center;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  touch-action: manipulation;
 }
-.file-label input { display: none; }
 
+.file-label:hover {
+  background: #393631;
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+}
+
+.file-label input {
+  display: none;
+}
+
+/* Lista de Partidas */
 .games-list {
   margin-top: 12px;
   max-height: 340px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .game-item {
-  padding: 8px;
+  padding: 10px 12px;
   background: var(--bg-elevated);
-  border-radius: 4px;
-  margin-bottom: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
   cursor: pointer;
   font-size: 0.85rem;
-  transition: background 0.15s;
+  transition: all 0.15s ease;
 }
-.game-item:hover { background: #4a4744; }
+
+.game-item:hover {
+  background: var(--bg-active);
+  border-color: var(--border-light);
+  transform: translateX(2px);
+}
+
 .game-item .players {
   display: flex;
   justify-content: space-between;
+  font-weight: 600;
   margin-bottom: 4px;
 }
-.game-item .result { color: var(--accent); font-weight: 600; }
-.game-item .meta { color: var(--text-muted); font-size: 0.75rem; }
 
-/* ===== Board section ===== */
+.game-item .result {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.game-item .meta {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+/* ============================================================
+   Seção do Tabuleiro (Board Section)
+   ============================================================ */
 
 .board-section {
   display: flex;
@@ -295,51 +459,57 @@ button.danger:hover { background: var(--danger); color: white; }
   min-width: 0;
 }
 
-/* Agrupador do "herói": barras dos jogadores + tabuleiro + controles. No
-   desktop é transparente (só repete o empilhamento da .board-section); no
-   mobile vira a barra sticky do topo — ver o bloco ≤900px lá embaixo. */
 .board-stack {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
 }
 
 .board-wrap {
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   max-width: var(--panel-max);
 }
 
-/* Barra de nome do jogador acima/abaixo do tabuleiro (estilo chess.com).
-   Inverte quem aparece em cima/embaixo conforme a orientação do tabuleiro. */
+/* Player Bar (Barras dos Jogadores) */
 .player-bar {
   width: 100%;
   max-width: var(--panel-max);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   background: var(--bg-card);
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.04);
-  font-size: 0.95rem;
-  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 0.92rem;
+  font-weight: 700;
   color: var(--text);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
+
 .player-bar .player-disc {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255,255,255,0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
   flex: 0 0 16px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.15);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.2);
 }
-.player-bar .player-disc.white { background: #f0eee9; border-color: rgba(0,0,0,0.25); }
-.player-bar .player-disc.black { background: #1a1715; }
+
+.player-bar .player-disc.white {
+  background: #f0eee9;
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+.player-bar .player-disc.black {
+  background: #1a1715;
+}
+
 .player-bar .player-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -347,137 +517,185 @@ button.danger:hover { background: var(--danger); color: white; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .player-bar .player-elo {
   color: var(--text-muted);
-  font-size: 0.82rem;
-  font-weight: 500;
-  flex: 0 0 auto;
-}
-.player-bar .player-result {
-  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--bg-elevated);
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 0.78rem;
-  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.player-bar .player-result {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
   background: var(--bg-elevated);
   color: var(--text-muted);
   letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
-.player-bar .player-result.win  { background: var(--accent); color: white; }
-.player-bar .player-result.loss { background: rgba(202,52,49,0.25); color: var(--c-blunder); }
-.player-bar .player-result.draw { background: var(--bg-elevated); color: var(--text); }
 
-/* Eval bar vertical (esquerda do tabuleiro) */
+.player-bar .player-result.win {
+  background: linear-gradient(180deg, #81b64c 0%, #6a9a3d 100%);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(129, 182, 76, 0.3);
+}
+
+.player-bar .player-result.loss {
+  background: rgba(202, 52, 49, 0.2);
+  color: #e0688a;
+  border: 1px solid rgba(202, 52, 49, 0.3);
+}
+
+.player-bar .player-result.draw {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* Eval Bar (Barra Vertical de Avaliação) */
 .eval-bar {
   position: relative;
   width: 24px;
   flex: 0 0 24px;
-  background: #f4f2ef; /* parte das brancas */
-  border-radius: 5px;
+  background: #f4f2ef;
+  border-radius: 6px;
   overflow: hidden;
-  /* Contorno interno: sem ele a metade preta some contra o --bg da página
-     (eram #2b2826 vs #312e2b — praticamente a mesma cor). */
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
-}
-.eval-bar-black {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  background: #1a1817;
-  transition: height 0.3s ease;
-  height: 50%;
-}
-.eval-bar-text {
-  position: absolute;
-  bottom: 4px;
-  left: 0; right: 0;
-  text-align: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #555;
-  z-index: 2;
-}
-.eval-bar.advantage-black .eval-bar-text {
-  bottom: auto;
-  top: 4px;
-  color: #eee;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
+.eval-bar-black {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #1a1817;
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 50%;
+}
+
+.eval-bar-text {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #333333;
+  z-index: 2;
+  line-height: 1;
+}
+
+.eval-bar.advantage-black .eval-bar-text {
+  bottom: auto;
+  top: 6px;
+  color: #f0eee9;
+}
+
+/* Tabuleiro Container */
 .board-container {
   position: relative;
   flex: 1 1 auto;
-  min-width: 0;            /* permite encolher dentro do flex (mobile) */
-  aspect-ratio: 1 / 1;     /* mantém o tabuleiro quadrado em qualquer largura */
-  border-radius: 6px;
-  /* SEM overflow:hidden aqui — os badges precisam transbordar nas casas das
-     bordas pra ficarem inteiros. O clip arredondado vai DIRETO no SVG, abaixo. */
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
   box-shadow: var(--shadow-card);
 }
-#board { width: 100%; height: 100%; }
-/* Arredonda os cantos do SVG do tabuleiro sem clipar os overlays (badges). */
-.cm-chessboard { clip-path: inset(0 round 6px); border-radius: 6px; }
 
-/* Tema madeira clássico (paleta "brown" do lichess), sobrescreve o "default" do cm-chessboard. */
-.cm-chessboard.default .board .square.white { fill: #f0d9b5; }
-.cm-chessboard.default .board .square.black { fill: #b58863; }
+#board {
+  width: 100%;
+  height: 100%;
+}
+
+.cm-chessboard {
+  clip-path: inset(0 round 8px);
+  border-radius: 8px;
+}
+
+/* Tema Madeira Clássico (Lichess Brown) */
+.cm-chessboard.default .board .square.white {
+  fill: #f0d9b5;
+}
+
+.cm-chessboard.default .board .square.black {
+  fill: #b58863;
+}
+
 .cm-chessboard.default.border-type-none .board .border,
-.cm-chessboard.default.border-type-thin .board .border { fill: #b58863; stroke: #b58863; }
-.cm-chessboard.default .coordinates .coordinate.white { fill: #b58863; }
-.cm-chessboard.default .coordinates .coordinate.black { fill: #f0d9b5; }
+.cm-chessboard.default.border-type-thin .board .border {
+  fill: #b58863;
+  stroke: #b58863;
+}
 
-/* =====  cm-chessboard customizations  =====
-   Markers usam <use href="#markerXxx"> dentro de <g class="markers">.
-   Sobrescrevemos fill/stroke das nossas classes.                       */
+.cm-chessboard.default .coordinates .coordinate.white {
+  fill: #b58863;
+}
 
-/* Highlight de origem (mais discreto) e destino (mais forte). */
+.cm-chessboard.default .coordinates .coordinate.black {
+  fill: #f0d9b5;
+}
+
+/* Custom Highlights cm-chessboard */
 .cm-chessboard .markers .marker-square-from {
   fill: #ffd957;
-  opacity: 0.30;
-}
-.cm-chessboard .markers .marker-square-to {
-  fill: #ffd957;
-  opacity: 0.55;
+  opacity: 0.32;
 }
 
-/* Xeque: vermelho pulsante na casa do rei (estilo chess.com). */
+.cm-chessboard .markers .marker-square-to {
+  fill: #ffd957;
+  opacity: 0.60;
+}
+
 .cm-chessboard .markers .marker-square-check {
   fill: #ff2a2a;
   animation: cr-check-pulse 1.4s ease-in-out infinite;
 }
+
 @keyframes cr-check-pulse {
   0%, 100% { opacity: 0.45; }
-  50%      { opacity: 0.78; }
+  50%      { opacity: 0.85; }
 }
 
-/* Badge da classificação — overlay HTML sobre a casa de destino (estilo
-   chess.com): disco colorido no canto superior direito, com pop-in animado. */
+/* Badges da Classificação no Tabuleiro */
 .board-overlays {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 10;
 }
+
 .cls-badge {
   position: absolute;
   transform: translate(-50%, -50%);
-  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.45));
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
   animation: cr-badge-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
 .cls-badge svg {
   display: block;
   width: 100% !important;
   height: 100% !important;
 }
+
 @keyframes cr-badge-pop {
-  0%   { transform: translate(-50%, -50%) scale(0.25); opacity: 0; }
-  60%  { transform: translate(-50%, -50%) scale(1.18); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+  0%   { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  60%  { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
-/* Arrows customizadas. */
-.cm-chessboard .arrows .arrow-best   { fill: var(--c-best);       opacity: 0.8; }
-.cm-chessboard .arrows .arrow-played { fill: var(--c-blunder);    opacity: 0.8; }
-.cm-chessboard .arrows .arrow-engine { fill: var(--c-brilliant);  opacity: 0.7; }
+/* Arrows */
+.cm-chessboard .arrows .arrow-best   { fill: var(--c-best);       opacity: 0.85; }
+.cm-chessboard .arrows .arrow-played { fill: var(--c-blunder);    opacity: 0.85; }
+.cm-chessboard .arrows .arrow-engine { fill: var(--c-brilliant);  opacity: 0.75; }
 
+/* Controles do Tabuleiro */
 .controls {
   display: flex;
   gap: 8px;
@@ -485,159 +703,173 @@ button.danger:hover { background: var(--danger); color: white; }
   max-width: var(--panel-max);
   justify-content: center;
 }
+
 .controls button {
   font-size: 1.15rem;
   color: var(--text);
   min-width: 52px;
-  min-height: 44px;          /* alvo de toque confortável */
+  min-height: 44px;
   flex: 1 1 auto;
   max-width: 90px;
+  border-radius: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Anula tap highlight (delay no iOS Safari) e o pulinho do :active —
-     juntos com blur() no JS, evitam o bug de "preciso tocar 2-3x" no mobile. */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.controls button:active { transform: none; }
-.controls button:focus { outline: none; }
+
+.controls button:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-light);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.controls button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
 .controls button svg {
   width: 22px;
   height: 22px;
   display: block;
-  pointer-events: none;   /* o alvo do toque é o botão, não o path do ícone */
+  pointer-events: none;
+  transition: transform 0.15s ease;
 }
-/* Avançar/voltar são o que mais se usa — ícone um tico maior. */
-#btn-prev svg, #btn-next svg { width: 24px; height: 24px; }
 
-/* ===== Abas do app mobile (segmented control) =====
-   Só existem no layout empilhado ≤900px, onde os quatro painéis (importar,
-   lances, resumo, engine) disputam a mesma coluna. No desktop os painéis
-   convivem nas colunas laterais, então a barra some. */
-.board-tabs { display: none; }
+.controls button:hover svg {
+  transform: scale(1.1);
+}
 
-.board-tab {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 42px;
-  padding: 6px 4px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  position: relative;
-  -webkit-tap-highlight-color: transparent;
+#btn-prev svg, #btn-next svg {
+  width: 24px;
+  height: 24px;
 }
-.board-tab:active { transform: none; }
-.board-tab:hover { background: rgba(255, 255, 255, 0.04); }
-.board-tab[aria-selected="true"] {
-  background: var(--bg-elevated);
-  color: var(--accent);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+
+/* Abas no Mobile */
+.board-tabs {
+  display: none;
 }
-.board-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* Pontinho de "tem coisa nova aqui" — usado no Resumo quando a análise termina
-   e o usuário ainda está na aba de lances. */
-.board-tab[data-badge]::after {
-  content: "";
-  position: absolute;
-  top: 7px;
-  right: 9px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
+
+/* ============================================================
+   Banner de Avaliação do Lance (#move-info)
+   ============================================================ */
 
 #move-info {
   width: 100%;
   max-width: var(--panel-max);
-  padding: 10px 12px;
+  padding: 12px 16px;
   background: var(--bg-card);
   border-radius: var(--radius);
-  border: 1px solid rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
   text-align: center;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
 }
 
+#move-info[data-cls="brilliant"]   { border-left: 4px solid var(--c-brilliant);   background: linear-gradient(90deg, rgba(38, 194, 163, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="great"]       { border-left: 4px solid var(--c-great);       background: linear-gradient(90deg, rgba(92, 139, 176, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="best"]        { border-left: 4px solid var(--c-best);        background: linear-gradient(90deg, rgba(129, 182, 76, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="excellent"]   { border-left: 4px solid var(--c-excellent);   background: linear-gradient(90deg, rgba(149, 187, 90, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="good"]        { border-left: 4px solid var(--c-good);        background: linear-gradient(90deg, rgba(176, 201, 140, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="book"]        { border-left: 4px solid var(--c-book);        background: linear-gradient(90deg, rgba(168, 136, 101, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="forced"]      { border-left: 4px solid var(--c-forced);      background: linear-gradient(90deg, rgba(155, 155, 149, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="inaccuracy"]  { border-left: 4px solid var(--c-inaccuracy);  background: linear-gradient(90deg, rgba(244, 191, 63, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="mistake"]     { border-left: 4px solid var(--c-mistake);     background: linear-gradient(90deg, rgba(239, 146, 52, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="blunder"]     { border-left: 4px solid var(--c-blunder);     background: linear-gradient(90deg, rgba(202, 52, 49, 0.1) 0%, var(--bg-card) 60%); }
+#move-info[data-cls="miss"]        { border-left: 4px solid var(--c-miss);        background: linear-gradient(90deg, rgba(224, 104, 138, 0.1) 0%, var(--bg-card) 60%); }
+
 #move-classification {
-  font-weight: 700;
-  font-size: 1.1rem;
+  font-weight: 800;
+  font-size: 1.08rem;
   margin-bottom: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
-#move-classification svg { vertical-align: middle; }
 
 #move-comment {
   color: var(--text-muted);
   font-size: 0.9rem;
+  line-height: 1.45;
   margin-bottom: 6px;
 }
 
 #move-pv {
   font-size: 0.85rem;
   color: var(--text-muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
-#move-pv strong { color: var(--text); }
 
-/* Gráfico de eval — vive dentro do card de Resumo (o relatório), como no
-   chess.com. Antes ficava solto embaixo do card da engine, o que garantia que
-   ninguém visse: abaixo da dobra em qualquer viewport. */
+#move-pv strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Gráfico de Eval */
 .chart-wrapper {
   width: 100%;
-  margin: 12px 0 0;
+  margin: 14px 0 0;
   height: 150px;
-  border-radius: var(--radius);
-  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
   overflow: hidden;
   padding: 0;
-  background: #262421;
+  background: #1d1c1a;
   box-shadow: var(--shadow-card);
 }
-#eval-chart { width: 100%; height: 100%; }
 
-/* ===== Moves list ===== */
+#eval-chart {
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================================
+   Lista de Lances (Moves List)
+   ============================================================ */
 
 .moves-list {
   background: var(--bg-card);
-  border-radius: 8px;
-  padding: 16px;
-  max-height: 85vh;
+  border-radius: var(--radius);
+  padding: 18px;
+  max-height: 82vh;
   overflow-y: auto;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
 }
 
 .moves-list h2 {
-  margin: 0 0 12px;
-  font-size: 1.1rem;
+  margin: 0 0 14px;
+  font-size: 1.08rem;
   color: var(--accent);
 }
 
-.placeholder { color: var(--text-muted); font-style: italic; }
-
 .progress-bar {
   width: 100%;
-  height: 22px;
+  height: 20px;
   background: var(--bg-elevated);
-  border-radius: 11px;
+  border-radius: 10px;
   position: relative;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   overflow: hidden;
+  border: 1px solid var(--border);
 }
+
 .progress-fill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, #81b64c 0%, #26c2a3 100%);
   width: 0%;
-  transition: width 0.2s ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 .progress-text {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -645,38 +877,63 @@ button.danger:hover { background: var(--danger); color: white; }
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
-  font-weight: 600;
-  color: white;
-  text-shadow: 0 0 4px rgba(0,0,0,0.5);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
 .move-pair {
   display: grid;
-  grid-template-columns: 28px 1fr 1fr;
-  gap: 4px;
+  grid-template-columns: 30px 1fr 1fr;
+  gap: 6px;
   margin-bottom: 2px;
   align-items: center;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.move-pair:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.015);
 }
 
 .move-pair .num {
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: 0.8rem;
+  font-weight: 600;
   text-align: right;
+  padding-right: 4px;
 }
 
 .move-cell {
-  padding: 4px 8px;
-  border-radius: 3px;
+  padding: 6px 10px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 0.88rem;
+  font-weight: 500;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  transition: background 0.12s ease, transform 0.05s ease;
+  border: 1px solid transparent;
 }
-.move-cell:hover { background: var(--bg-elevated); }
-.move-cell.active { background: var(--accent); color: white; }
+
+.move-cell:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.move-cell.active {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(129, 182, 76, 0.35);
+  border-color: var(--accent-dark);
+}
+
 .move-cell .cls-icon {
-  margin-left: 4px;
+  margin-left: 6px;
   flex-shrink: 0;
   display: inline-flex;
 }
@@ -687,147 +944,197 @@ button.danger:hover { background: var(--danger); color: white; }
 .cls-label.excellent   { color: var(--c-excellent); }
 .cls-label.good        { color: var(--c-good); }
 .cls-label.book        { color: var(--c-book); }
+.cls-label.forced      { color: var(--c-forced); }
 .cls-label.inaccuracy  { color: var(--c-inaccuracy); }
 .cls-label.mistake     { color: var(--c-mistake); }
 .cls-label.blunder     { color: var(--c-blunder); }
 .cls-label.miss        { color: var(--c-miss); }
 
-/* ===== Summary card ===== */
+/* ============================================================
+   Summary & Report Dashboard
+   ============================================================ */
 
 #players-summary {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .player-acc {
   text-align: center;
-  padding: 10px 6px;
+  padding: 14px 8px;
   background: var(--bg-elevated);
-  border-radius: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
 }
-.player-acc .name { font-weight: 600; font-size: 0.9rem; }
-.player-acc .acc { font-size: 1.6rem; color: var(--accent); margin-top: 4px; font-weight: 700; }
-.player-acc .acc-label { font-size: 0.7rem; color: var(--text-muted); }
-.player-acc .elo { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
-.player-acc .elo-range { opacity: 0.65; font-size: 0.9em; white-space: nowrap; }
 
-/* 3 colunas: nº das brancas (esq.) | rótulo (centro) | nº das pretas (dir.).
-   Assim cada cor vira uma coluna alinhada e dá pra ler a quantidade de cada
-   lado só batendo o olho. */
+.player-acc .name {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.player-acc .acc {
+  font-size: 1.75rem;
+  color: var(--accent);
+  margin-top: 4px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.player-acc .acc-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.player-acc .elo {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  font-family: var(--font-mono);
+}
+
+.player-acc .elo-range {
+  opacity: 0.7;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
 .count-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 5px 0;
   font-size: 0.85rem;
 }
-.count-row .count-label { display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
-.count-row .count-n { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.count-row .count-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.count-row .count-n {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
 .count-row .count-n.w { text-align: left; }
 .count-row .count-n.b { text-align: right; }
+
 .count-row.count-head {
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: 6px;
-  margin-bottom: 2px;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
 }
-.count-row.count-head .count-n { font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-/* ===== Opening + Coach cards ===== */
-
-#opening-info .eco { color: var(--text-muted); font-size: 0.8rem; }
-#opening-info .name { font-weight: 600; font-size: 1rem; margin-top: 4px; }
+/* Cards de Abertura & Coach */
+#opening-info .eco { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.8rem; }
+#opening-info .name { font-weight: 700; font-size: 1rem; margin-top: 4px; }
 #opening-info .book-info { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
 
-#coach-bullets { font-size: 0.88rem; line-height: 1.45; }
-#coach-bullets p { margin: 0 0 6px; }
-#coach-bullets strong { color: var(--text); }
+#coach-bullets { font-size: 0.9rem; line-height: 1.5; }
+#coach-bullets p { margin: 0 0 8px; }
+#coach-bullets strong { color: var(--text); font-weight: 700; }
 
 #coach-critical .critical-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 3px;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   cursor: pointer;
-  font-size: 0.85rem;
-  margin: 2px 0;
+  font-size: 0.88rem;
+  margin-top: 4px;
+  transition: all 0.15s ease;
 }
-#coach-critical .critical-item:hover { background: var(--bg-elevated); }
+
+#coach-critical .critical-item:hover {
+  background: var(--bg-active);
+  border-color: var(--border-light);
+}
 
 footer {
-  padding: 10px 16px;
+  padding: 14px 20px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   border-top: 1px solid var(--border);
+  background: var(--bg-card);
   flex: 0 0 auto;
 }
+
 footer p { margin: 0; }
-footer a { color: var(--accent); }
+footer a { color: var(--accent); font-weight: 600; text-decoration: none; }
+footer a:hover { text-decoration: underline; }
 
 .muted { color: var(--text-muted); font-size: 0.85rem; margin-top: 8px; }
 
-/* ===== Modo exploração ===== */
-
+/* Modo Exploração Banner */
 .explore-banner {
   width: 100%;
   max-width: var(--panel-max);
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: linear-gradient(90deg, #1baca6 0%, #5c8bb0 100%);
-  color: white;
-  border-radius: 8px;
+  color: #ffffff;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
-  font-weight: 600;
-  /* Visibilidade é controlada pelo app.js via style.display (none/flex).
-     Nada de !important aqui, senão não dá pra esconder. */
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(27, 172, 166, 0.35);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
+
 .explore-banner button.small {
   font-size: 0.8rem;
-  padding: 4px 10px;
+  padding: 5px 12px;
 }
 
-/* ===== Live engine card ===== */
-
+/* Painel da Engine ao Vivo */
 .card.live-engine {
   width: 100%;
   max-width: var(--panel-max);
   margin: 0;
 }
+
 .live-engine-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
+
 .live-engine-head h2 { margin: 0; }
 
-/* Chip de status da engine (carregando / pronta / erro). Discreto, estilo
-   chess.com: disquinho colorido + label minúsculo. */
 .engine-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 0.74rem;
+  font-weight: 700;
   color: var(--text-muted);
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: 999px;
   background: var(--bg-elevated);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
 }
+
 .engine-status-dot {
   width: 8px;
   height: 8px;
@@ -835,59 +1142,61 @@ footer a { color: var(--accent); }
   background: var(--text-muted);
   flex: 0 0 8px;
 }
+
 .engine-status.loading .engine-status-dot {
   background: var(--c-inaccuracy);
   animation: cr-status-pulse 1.1s ease-in-out infinite;
 }
+
 .engine-status.loading { color: var(--c-inaccuracy); }
 .engine-status.ready .engine-status-dot { background: var(--accent); }
 .engine-status.ready { color: var(--accent); }
 .engine-status.error .engine-status-dot { background: var(--danger); }
 .engine-status.error { color: var(--danger); }
-@keyframes cr-status-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(0.85); }
-  50%      { opacity: 1;   transform: scale(1); }
-}
-
-/* Dica dentro do card enquanto a engine ainda carrega/baixa. */
-.engine-hint {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
-  padding: 6px 2px;
-}
 
 .live-engine-meta {
   display: flex;
-  gap: 12px;
-  font-size: 0.75rem;
+  gap: 14px;
+  font-size: 0.78rem;
   color: var(--text-muted);
-  margin-bottom: 8px;
-  font-family: ui-monospace, monospace;
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
 }
+
 .live-engine-lines {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem;
 }
+
 .engine-line {
   display: grid;
-  grid-template-columns: 56px 1fr;
+  grid-template-columns: 58px 1fr;
   gap: 8px;
-  padding: 4px 6px;
-  border-radius: 3px;
+  padding: 6px 8px;
+  border-radius: 6px;
   align-items: baseline;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  transition: background 0.12s;
 }
-.engine-line:hover { background: var(--bg-elevated); cursor: pointer; }
+
+.engine-line:hover {
+  background: var(--bg-active);
+  cursor: pointer;
+}
+
 .engine-line .eval {
   font-weight: 700;
   color: var(--accent);
   text-align: right;
 }
+
 .engine-line .eval.negative { color: var(--c-blunder); }
 .engine-line .eval.mate { color: var(--c-brilliant); }
+
 .engine-line .pv-text {
   color: var(--text);
   overflow: hidden;
@@ -898,43 +1207,40 @@ footer a { color: var(--accent); }
 .live-engine-controls {
   display: flex;
   gap: 16px;
-  margin-top: 10px;
-  font-size: 0.8rem;
+  margin-top: 12px;
+  font-size: 0.82rem;
   color: var(--text-muted);
 }
+
 .live-engine-controls select {
   background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 2px 6px;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: inherit;
 }
-.engine-depth-hint {
-  margin: 8px 0 0;
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-.engine-depth-hint strong { color: var(--text); font-weight: 600; }
 
-/* ===== Toasts ===== */
+/* Toasts */
 .toast-root {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
+  bottom: 20px;
+  right: 20px;
   z-index: 10000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   max-width: min(380px, calc(100vw - 24px));
   pointer-events: none;
 }
+
 .toast {
   pointer-events: auto;
-  padding: 12px 14px;
-  border-radius: var(--radius);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
   background: var(--bg-card);
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-hover);
   color: var(--text);
   font-size: 0.88rem;
   line-height: 1.4;
@@ -943,321 +1249,138 @@ footer a { color: var(--accent); }
   gap: 10px;
   animation: cr-toast-in 0.2s ease-out;
 }
-.toast.toast-error { border-left: 3px solid var(--danger); }
-.toast.toast-success { border-left: 3px solid var(--accent); }
-.toast.toast-info { border-left: 3px solid var(--c-great); }
-.toast-msg { flex: 1; min-width: 0; }
-.toast-close {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 1.1rem;
-  line-height: 1;
-  padding: 0 2px;
-  min-width: 28px;
-  min-height: 28px;
-}
-.toast-close:hover { color: var(--text); }
+
+.toast.toast-error { border-left: 4px solid var(--danger); }
+.toast.toast-success { border-left: 4px solid var(--accent); }
+.toast.toast-info { border-left: 4px solid var(--c-great); }
+
 @keyframes cr-toast-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .toast { animation: none; }
+
+/* Modais & Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-elevated) transparent;
 }
 
-/* ===== Diálogo de promoção ===== */
-.promo-dialog {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.55);
-  padding: 16px;
-}
-.promo-dialog[hidden] { display: none !important; }
-.promo-dialog-panel {
-  background: var(--bg-card);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-card);
-  padding: 16px 18px;
-  min-width: 220px;
-  text-align: center;
-}
-.promo-dialog-title {
-  margin: 0 0 12px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-}
-.promo-dialog-pieces {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-.promo-dialog-pieces button {
-  width: 52px;
-  height: 52px;
-  min-width: 52px;
-  font-size: 1.75rem;
-  line-height: 1;
-  border-radius: 8px;
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
   background: var(--bg-elevated);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: var(--text);
-  cursor: pointer;
-  padding: 0;
+  border-radius: 4px;
 }
-.promo-dialog-pieces button:hover,
-.promo-dialog-pieces button:focus-visible {
-  border-color: var(--accent);
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.promo-cancel {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 8px 12px;
-  min-height: 44px;
-}
-.promo-cancel:hover { color: var(--text); }
+::-webkit-scrollbar-thumb:hover { background: #4a4744; }
 
-/* ===== Multi-game picker ===== */
-.multi-game-picker {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255,255,255,0.06);
-}
-.multi-game-title { margin: 0 0 8px; }
-.multi-game-picker .game-item.active {
-  outline: 1px solid var(--accent);
-  background: var(--bg-elevated);
-}
-
-/* ===== Ações do resumo (export / share) ===== */
+/* Summary Actions Buttons */
 .summary-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--border);
 }
+
 button.secondary {
   background: var(--bg-elevated);
   color: var(--text);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 6px;
-  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   min-height: 40px;
 }
+
 button.secondary:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
-button.secondary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* ===== Scrollbars (tema escuro) ===== */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--bg-elevated) transparent;
-}
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--bg-elevated);
-  border-radius: 6px;
-  border: 2px solid var(--bg);
-}
-::-webkit-scrollbar-thumb:hover { background: #4a4744; }
 
 /* ============================================================
-   Responsivo
+   Media Queries & Responsividade (Desktop / Mobile)
    ============================================================ */
 
-/* Desktop largo: o tabuleiro é o HERÓI. Travado em 560px ele ficava pequeno e
-   com sobra dos dois lados numa coluna larga (ex.: 528px de tabuleiro numa
-   coluna de 706px). Aqui o tamanho escala junto com a ALTURA da viewport e a
-   largura disponível: fica grande o quanto a tela permite, sem estourar
-   verticalmente nem virar gigante em monitor enorme (cap 760px). Os painéis que
-   acompanham o tabuleiro (eval bar, controles, gráfico, engine) usam o mesmo
-   --panel-max, então continuam alinhados com ele. */
 @media (min-width: 1101px) {
   :root {
-    /* Altura de referência do tabuleiro = viewport menos tudo que o acompanha
-       (header, footer, barras dos jogadores, controles, comentário do lance e
-       os gaps). +32px porque --panel-max inclui a coluna da eval bar.
-       O tabuleiro é o herói: escala com a ALTURA da janela e vai até 1000px em
-       monitor grande. A constante de 166px é o que fica ombro a ombro com ele
-       na vertical — header, respiro do topo, as duas barras de jogador, os
-       controles e os gaps. É o que garante que o tabuleiro E as setas de
-       navegação caibam sem rolar; o resto da página (gráfico, engine) fica
-       abaixo da dobra de propósito e chega com um scroll.
-       Em 1440x900 dá ~694px de tabuleiro, contra os 524 de quando esta tela
-       nasceu. Mexeu na altura de alguma daquelas peças, reajuste aqui — o
-       script de medição vive no scratchpad da sessão (dobra.js). */
     --panel-max: clamp(460px, calc(100vh - 188px), 1000px);
     --panel-max: clamp(460px, calc(100dvh - 188px), 1000px);
   }
 
   main {
     max-width: 1680px;
-    /* O tabuleiro tem PRIORIDADE: a coluna central pega o tamanho ideal
-       (--panel-max) e as laterais dividem o que sobrar. Antes as laterais
-       tinham mínimo de 340px cada, o que em 1150px espremia o herói pra 326px —
-       menor que os próprios painéis. */
     grid-template-columns: minmax(268px, 1fr) minmax(0, var(--panel-max)) minmax(268px, 1fr);
-    /* Gutter menor que o padrão: entre 1150 e 1440px quem limitava o tabuleiro
-       era a LARGURA (laterais no mínimo + gutter), não a altura. Afrouxar os
-       dois devolveu ~35px de tabuleiro nessas telas. */
     column-gap: clamp(24px, 3vw, 48px);
     justify-content: center;
   }
 
-  /* Coluna da direita: avaliação do lance em cima, lista de lances ocupando o
-     resto. É um flex container (e não duas linhas do grid) porque as outras
-     colunas atravessariam essas linhas e o grid distribuiria a altura delas
-     pra primeira — o card da avaliação ficava com 160px pra duas linhas de
-     texto em 1440px, e com 16px em 1101px. */
   .review-col {
     display: flex;
     flex-direction: column;
     gap: 16px;
     min-width: 0;
   }
+
   .review-col #move-info {
     flex: 0 0 auto;
     max-width: none;
     text-align: left;
   }
+
   .review-col #move-classification { justify-content: flex-start; }
-  /* A lista tem o scroll dela (85vh, do estilo base) — é o único scroll interno
-     que sobrou no desktop, e é o comportamento original. */
   .review-col .moves-list { flex: 0 1 auto; }
 
-  /* Depois da análise o relatório é o que importa: acurácia e coach sobem, o
-     formulário de importar desce pro fim da coluna. Continua inteiro — só
-     deixa de ocupar o canto mais nobre da tela. */
   #summary-card { order: 1; }
   #coach-card   { order: 2; }
   #opening-card { order: 3; }
   #import-card  { order: 4; }
-}
 
-/* Desktop: mantém os alvos de toque/pesos comfortáveis, mas enxuga o que fica
-   ombro a ombro com o tabuleiro na vertical — cada pixel aqui é pixel de
-   tabuleiro. A página rola normalmente (o gráfico e o card da engine ficam
-   abaixo da dobra, e tudo bem: chegam com um scroll).
-   Já foi um layout de altura travada com cada coluna rolando por dentro; os
-   scrollbars internos incomodavam mais do que a "tela única" ajudava. */
-@media (min-width: 1101px) {
   .board-section { gap: 8px; }
-  /* Barras dos jogadores coladas no tabuleiro (estilo chess.com)… */
-  .board-stack { gap: 4px; }
-  /* …mas os controles precisam de ar: encostados eles pareciam parte do
-     tabuleiro. O espaço sai do orçamento do --panel-max (ver a constante lá em
-     cima), por isso vale só aqui e não no gap geral do bloco. */
-  .controls { margin-top: 14px; }
-  .player-bar { padding: 3px 12px; font-size: 0.9rem; }
-  .player-bar .player-disc { width: 14px; height: 14px; flex-basis: 14px; }
-  /* Ponteiro de mouse não precisa dos 44px de alvo de toque. Quem manda na
-     altura aqui é o padding, não o min-height. */
-  .controls button { padding: 5px 14px; min-height: 34px; }
-
-  #move-info { padding: 9px 12px; }
-  #move-classification { font-size: 1rem; margin-bottom: 3px; }
-  #move-comment { font-size: 0.86rem; line-height: 1.35; }
+  .board-stack { gap: 6px; }
+  .controls { margin-top: 10px; }
 }
 
-/* ============================================================
-   Casca de app (≤1100px) — celular e tablet
-   ------------------------------------------------------------
-   Abaixo de 1100px não cabem três colunas. Em vez da pilha infinita de cards
-   (a versão antiga tinha 3143px de rolagem num tablet de 1000px), o tabuleiro
-   e os controles ficam presos no topo (sticky) e uma barra de abas troca o
-   painel que rola embaixo — Importar / Lances / Resumo / Engine.
-   Nada foi removido: os quatro painéis continuam completos, a um toque.
-   ============================================================ */
 @media (max-width: 1100px) {
   main {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
+    padding: 12px;
   }
-  /* Faz os cards da sidebar (e a coluna da direita) virarem itens diretos do
-     main, pro `order` valer em todos eles. */
+
   .sidebar,
   .review-col { display: contents; }
   .moves-list { max-height: none; }
 
   :root {
-    /* Largura de TODOS os painéis (barras dos jogadores, controles, abas,
-       comentário, lances, resumo, coach, engine). É a mesma conta da largura do
-       tabuleiro, menos os 12px de respiro de cada lado — assim tudo fica na
-       mesma coluna. Antes o tablet tinha três larguras diferentes na mesma
-       tela: tabuleiro 694, barras 640, lista de lances 976.
-       O TABULEIRO em si ignora isso e sangra até as bordas — ver .board-wrap.
-
-       Os 330px descontados são tudo que divide a tela com o tabuleiro quando a
-       página está no topo: header do site, barras dos jogadores, controles,
-       barra de abas e os gaps. É o que garante que as ABAS apareçam sem rolar
-       mesmo num celular baixo (em 360x640 elas ficavam 18px fora da tela).
-       Num celular normal (844px+) esse termo nem entra: quem manda é o 100vw.
-
-       `svh` e NÃO `dvh`: a unidade dinâmica muda de valor enquanto a página
-       rola (a barra de endereço do celular recolhe e volta), o que fazia o
-       tabuleiro e os painéis mudarem de tamanho o tempo todo durante o scroll.
-       `svh` é a viewport com a barra visível — um valor fixo. */
     --panel-max: min(calc(100vw - 24px), calc(100vh - 330px), 720px);
     --panel-max: min(calc(100vw - 24px), calc(100svh - 330px), 720px);
   }
 
-  /* Header centralizado: logo em cima, tagline embaixo. Alinhado à esquerda a
-     logo ficava jogada num canto com a tagline pendurada embaixo. */
   header {
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: 4px;
+    padding: 10px 14px;
   }
-  header .tagline { flex: 0 1 auto; max-width: 34ch; }
 
-  main { gap: 12px; }
+  header .tagline { flex: 0 1 auto; max-width: 36ch; }
 
-  /* A .board-section fica transparente pro layout (mesmo truque do .sidebar):
-     assim .board-stack, as abas e os painéis do centro viram itens diretos do
-     main. É isso que deixa o sticky do tabuleiro valer pela PÁGINA inteira, e
-     não só pela altura da própria .board-section. */
   .board-section { display: contents; }
 
-  /* As abas não entram aqui: moram DENTRO da .board-stack. */
   .board-stack      { order: 1; }
   #move-info        { order: 3; }
   #import-card      { order: 4; }
   .moves-list       { order: 5; }
-  /* Aba "Resumo": acurácia (o gráfico mora dentro desse card), coach, abertura. */
   #summary-card     { order: 6; }
   #coach-card       { order: 7; }
   #opening-card     { order: 8; }
   #live-engine-card { order: 9; }
 
-  /* Todo painel na mesma coluna do tabuleiro, centralizado. Sem isso os cards
-     vindos da sidebar (lances, resumo, coach, importar) esticavam pela largura
-     inteira enquanto as barras do jogador ficavam no --panel-max. */
   #move-info,
   #import-card,
   .moves-list,
@@ -1270,177 +1393,95 @@ button.secondary:focus-visible {
     margin-inline: auto;
   }
 
-  /* ---- Bloco do tabuleiro: preso no topo ----
-     Tabuleiro + barras dos jogadores + controles + abas num único elemento
-     sticky. É o que faz o tabuleiro ficar PARADO enquanto os lances passam por
-     baixo — sem ele, a página rolava pra acompanhar o lance ativo e o
-     tabuleiro saía da tela.
-     O tamanho aqui é fixo: nada encolhe, nada redimensiona com o scroll. */
+  /* Board Stack Sticky no Topo Mobile */
   .board-stack {
     position: sticky;
     top: 0;
-    z-index: 20;
+    z-index: 30;
     gap: 6px;
-    /* Sangra até as bordas da tela pro tabuleiro encostar nelas. */
     width: calc(100% + 24px);
     margin-inline: -12px;
-    padding: 0 12px 8px;
+    padding: 4px 12px 8px;
     background: var(--bg);
-    box-shadow: 0 8px 14px -10px rgba(0, 0, 0, 0.85);
+    box-shadow: 0 8px 16px -6px rgba(0, 0, 0, 0.85);
   }
 
-  /* Tabuleiro + eval bar de ponta a ponta da tela. No celular cada pixel de
-     largura vira casa maior, então o herói ignora o padding do main e encosta
-     nas bordas (a .board-stack tem 12px de padding, e o align-items:center faz
-     o transbordo sair simétrico — dá exatamente a largura da tela).
-     O `min()` só entra em ação em tela muito baixa, pra não empurrar as abas
-     pra fora da viewport.
-     Nada de `margin-inline: auto` aqui: margem automática em flexbox vira 0
-     quando o item é MAIOR que o container, e aí ele encosta só na esquerda —
-     era isso que criava 12px de scroll horizontal. Quem centraliza (e faz o
-     transbordo sair simétrico) é o align-items:center da .board-stack. */
   .board-wrap {
     max-width: none;
-    /* Mesma conta do --panel-max (ver acima), só que de ponta a ponta: sem os
-       12px de respiro de cada lado. O teto de 720px é pro tablet — em 1000px de
-       largura um tabuleiro full-bleed engoliria a tela inteira.
-       Esse tamanho é FIXO: uma vez montada a tela, o tabuleiro não muda mais
-       (nada de `dvh`, nada de encolher com o scroll). */
     width: min(100vw, calc(100vh - 330px), 720px);
     width: min(100vw, calc(100svh - 330px), 720px);
-    /* Sem isso o flex-shrink padrão encolhe o tabuleiro de volta pra largura do
-       container (366px em vez de 390px) e a sangria não acontece. */
     flex-shrink: 0;
     gap: 6px;
   }
-  /* Encostando na borda, canto arredondado só mostraria o fundo atrás. */
+
   .board-container { border-radius: 0; }
   .cm-chessboard { border-radius: 0; clip-path: none; }
   .eval-bar { border-radius: 0 4px 4px 0; }
 
-  /* Barras dos jogadores e controles compactos — tudo isso mora na barra presa
-     no topo, então cada pixel aqui é um pixel a menos de lista de lances. */
-  .player-bar { padding: 4px 10px; font-size: 0.88rem; }
-  .player-bar .player-elo { font-size: 0.76rem; }
-  .player-bar .player-disc { width: 14px; height: 14px; flex-basis: 14px; }
-  .controls button { padding: 6px 14px; min-height: 40px; }
+  .player-bar { padding: 6px 12px; font-size: 0.88rem; }
+  .controls button { padding: 6px 14px; min-height: 42px; }
 
+  /* Segmented Control Abas Mobile */
   .board-tabs {
     display: flex;
     gap: 4px;
     width: 100%;
-    /* Acompanha o tabuleiro, mas nunca abaixo de 320px: com o board limitado
-       pela ALTURA (tela baixa, celular deitado) os rótulos das abas ficariam
-       truncados em "Im…", "La…". */
     max-width: min(100%, max(var(--panel-max), 320px));
     margin-inline: auto;
     padding: 4px;
     background: var(--bg-card);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    border-radius: 10px;
     box-shadow: var(--shadow-card);
-    /* Não precisa de sticky próprio: mora dentro da .board-stack, que já é
-       sticky — as abas ficam presas no rodapé dela. */
   }
 
-  /* ---- Um painel por vez ----
-     Só ESCONDE o que não é da aba ativa; nunca força display, pro app.js
-     continuar mandando em quem já nasce escondido (resumo, coach e gráfico só
-     existem depois da análise). */
+  .board-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    padding: 6px 4px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .board-tab[aria-selected="true"] {
+    background: var(--bg-elevated);
+    color: var(--accent);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+
   body[data-mtab]:not([data-mtab="import"]) #import-card { display: none !important; }
   body[data-mtab]:not([data-mtab="moves"])  .moves-list  { display: none !important; }
   body[data-mtab]:not([data-mtab="report"]) #opening-card,
   body[data-mtab]:not([data-mtab="report"]) #summary-card,
   body[data-mtab]:not([data-mtab="report"]) #coach-card { display: none !important; }
   body[data-mtab]:not([data-mtab="engine"]) #live-engine-card { display: none !important; }
-
-  /* O comentário do lance atual não tem o que fazer na aba de importar (e
-     rouba espaço do formulário quando o teclado sobe). Volta na hora que sai. */
   body[data-mtab="import"] #move-info { display: none !important; }
-
-  /* ---- Alvos de toque ----
-     Vale em toda a casca de app (não só ≤600px): num celular deitado, com
-     780px de largura, os lances ainda são tocados com o dedo.
-     A lista de lances é o núcleo do produto no celular — legível de relance:
-     ícone da classificação maior, linhas com altura de dedo, zebra pra não
-     perder a linha ao correr o olho. */
-  .move-pair { grid-template-columns: 30px 1fr 1fr; gap: 6px; margin-bottom: 2px; }
-  .move-pair:nth-child(odd) { background: rgba(255, 255, 255, 0.018); border-radius: 4px; }
-  .move-cell { padding: 9px 8px; min-height: 42px; font-size: 0.95rem; font-weight: 500; }
-  .move-cell .cls-icon svg { width: 20px; height: 20px; }
-  .game-item { padding: 11px 10px; min-height: 44px; }
-  .engine-line { padding: 9px 8px; grid-template-columns: 52px 1fr; }
-  #coach-critical .critical-item { padding: 9px 8px; min-height: 42px; font-size: 0.9rem; }
-  .summary-actions button { flex: 1 1 140px; min-height: 44px; }
-  /* Link do rodapé também precisa de área de toque. */
-  footer a { display: inline-block; padding: 11px 6px; }
-
-  /* Listas de partidas ganham fôlego — aqui elas têm uma aba só pra elas. */
-  .games-list { max-height: 55vh; }
 }
 
-/* Celular deitado (ou qualquer tela muito baixa): a largura sobra e a altura é
-   o que falta, então o tabuleiro passa a ser limitado por ela. --panel-max
-   segue a mesma conta, senão a fórmula do modo retrato esmaga os painéis. */
-@media (max-width: 1100px) and (max-height: 560px) {
-  :root {
-    --panel-max: min(calc(100vw - 24px), calc(100vh - 60px), 720px);
-  }
-  .board-wrap { width: min(100vw, calc(100vh - 60px), 720px); }
-  /* Deitado, a barra do tabuleiro é mais alta que a própria tela — presa no
-     topo ela empurraria as abas pra fora da viewport (ficavam 86px abaixo do
-     fim da tela). Aqui ela volta a rolar com a página. */
-  .board-stack { position: static; box-shadow: none; }
-}
-
-/* Celular: aperta espaçamentos e engorda os alvos de toque. */
 @media (max-width: 600px) {
-  header { padding: 8px 14px 10px; }
-  header h1.brand img { height: 46px; }
-  /* Tagline continua visível — só compactada (é a descrição do produto no
-     primeiro contato). */
-  .tagline { font-size: 0.75rem; line-height: 1.3; }
+  header { padding: 8px 12px; }
+  header h1.brand img { height: 44px; }
+  .tagline { font-size: 0.74rem; }
 
-  main { padding: 12px; gap: 12px; }
-  .card { padding: 13px; }
-  .moves-list { padding: 12px; }
-  /* Os títulos repetem o nome da aba ativa — ficam como âncora, mas discretos. */
-  .card h2, .moves-list h2 { font-size: 0.95rem; margin-bottom: 9px; }
+  main { padding: 10px; gap: 10px; }
+  .card { padding: 14px; }
+  .moves-list { padding: 14px; }
 
-  .tab-btn { padding: 10px 10px; font-size: 0.9rem; }
-
-  /* Três selects não cabem numa linha só em 390px. */
-  .live-engine-controls { flex-wrap: wrap; gap: 10px 14px; }
-  .live-engine-controls select { padding: 6px 8px; }
-
-  /* No celular o card de importar vem ANTES do tabuleiro — uma caixa de PGN
-     grande empurra o board pra baixo. Encolhe aqui (continua arrastável); no
-     desktop segue com 160px. */
-  #pgn-input { min-height: 84px; }
-
-  .eval-bar { width: 18px; flex-basis: 18px; }
-
-  /* Acurácia lado a lado continua, mas com fonte um tiquinho menor. */
-  .player-acc .acc { font-size: 1.4rem; }
-
-  /* Controles ocupam a largura toda, botões grandes pro dedo. */
-  .controls button { max-width: none; min-height: 46px; }
-
-  /* iOS Safari (e Chrome Android) dão zoom automatico ao focar um campo com
-     font-size < 16px. Forçar 16px nos campos no celular elimina esse zoom
-     indesejado sem mexer no viewport (zoom manual/pinch continua funcionando)
-     e sem alterar a aparencia no desktop. */
   textarea, input[type="text"], select { font-size: 16px; }
 }
 
-/* ============================================================
-   Acessibilidade: respeita quem pediu menos movimento.
-   Mata pulsos/pop-ins/transições não-essenciais sem mudar o layout.
-   ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;

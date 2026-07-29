@@ -4,9 +4,18 @@
    ============================================================ */
 
 :root {
-  /* Tipografia */
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Consolas, monospace;
+  /* Tipografia — system UI (fidelidade chess.com; sem Google Fonts) */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* Escala de espaçamento (base 4px) — ritmo visual único desktop/mobile */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
 
   /* Paleta Inspirada no Chess.com (Original) */
   --bg: #312e2b;
@@ -46,6 +55,8 @@
   --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.35);
   --radius: 10px;
   --radius-sm: 6px;
+  --sticky-top: var(--s-4);
+  --col-max-h: calc(100dvh - var(--s-6));
 }
 
 * {
@@ -93,14 +104,14 @@ img, svg, canvas {
    ============================================================ */
 
 header {
-  padding: 14px 24px;
+  padding: var(--s-3) var(--s-6);
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: var(--s-1) var(--s-4);
   position: relative;
   z-index: 50;
 }
@@ -194,9 +205,9 @@ main {
   flex: 1;
   display: grid;
   grid-template-columns: minmax(320px, 1fr) minmax(0, var(--panel-max)) minmax(320px, 1fr);
-  column-gap: clamp(24px, 3.5vw, 48px);
-  row-gap: 16px;
-  padding: 20px;
+  column-gap: clamp(var(--s-6), 3.5vw, 48px);
+  row-gap: var(--s-4);
+  padding: var(--s-5);
   max-width: 1560px;
   margin: 0 auto;
   width: 100%;
@@ -205,33 +216,28 @@ main {
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--s-4);
   min-width: 0;
 }
 
-/* Cards Genéricos */
+/* Cards Genéricos — hover só em itens interativos (não no card inteiro) */
 .card {
   background: var(--bg-card);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: var(--s-4) var(--s-5);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .card h2 {
-  margin: 0 0 14px;
-  font-size: 1.08rem;
+  margin: 0 0 var(--s-3);
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.01em;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-2);
 }
 
 /* ============================================================
@@ -240,10 +246,10 @@ main {
 
 .tabs {
   display: flex;
-  gap: 4px;
-  margin-bottom: 14px;
+  gap: var(--s-1);
+  margin-bottom: var(--s-3);
   background: var(--bg-elevated);
-  padding: 4px;
+  padding: var(--s-1);
   border-radius: 10px;
   border: 1px solid var(--border);
 }
@@ -316,11 +322,12 @@ button {
   background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 9px 16px;
+  padding: 10px var(--s-4);
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.88rem;
   font-weight: 600;
+  min-height: 44px;
   transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
   touch-action: manipulation;
   display: inline-flex;
@@ -390,7 +397,8 @@ button.danger:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 9px 14px;
+  padding: 10px 14px;
+  min-height: 44px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -414,16 +422,16 @@ button.danger:hover {
 
 /* Lista de Partidas */
 .games-list {
-  margin-top: 12px;
+  margin-top: var(--s-3);
   max-height: 340px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s-1);
 }
 
 .game-item {
-  padding: 10px 12px;
+  padding: var(--s-2) var(--s-3);
   background: var(--bg-elevated);
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -463,7 +471,7 @@ button.danger:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: var(--s-3);
   width: 100%;
   min-width: 0;
 }
@@ -472,14 +480,14 @@ button.danger:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-2);
   width: 100%;
 }
 
 .board-wrap {
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: var(--s-2);
   width: 100%;
   max-width: var(--panel-max);
 }
@@ -490,8 +498,8 @@ button.danger:hover {
   max-width: var(--panel-max);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
   background: var(--bg-card);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -726,10 +734,11 @@ button.danger:hover {
 /* Controles do Tabuleiro */
 .controls {
   display: flex;
-  gap: 8px;
+  gap: var(--s-2);
   width: 100%;
   max-width: var(--panel-max);
   justify-content: center;
+  margin-top: var(--s-1);
 }
 
 .controls button {
@@ -790,13 +799,13 @@ button.danger:hover {
 #move-info {
   width: 100%;
   max-width: var(--panel-max);
-  padding: 12px 16px;
+  padding: var(--s-3) var(--s-4);
   background: var(--bg-card);
   border-radius: var(--radius);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-card);
-  text-align: center;
-  min-height: 76px;
+  text-align: left;
+  min-height: 0;
   transition: border-color 0.15s ease, background 0.15s ease;
   position: relative;
   overflow: hidden;
@@ -816,12 +825,12 @@ button.danger:hover {
 
 #move-classification {
   font-weight: 800;
-  font-size: 1.08rem;
-  margin-bottom: 4px;
+  font-size: 1.05rem;
+  margin-bottom: var(--s-1);
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: var(--s-2);
   max-width: 100%;
   overflow: hidden;
 }
@@ -854,7 +863,7 @@ button.danger:hover {
 /* Gráfico de Eval */
 .chart-wrapper {
   width: 100%;
-  margin: 14px 0 0;
+  margin: var(--s-3) 0 0;
   height: 150px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -876,7 +885,7 @@ button.danger:hover {
 .moves-list {
   background: var(--bg-card);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: var(--s-4) var(--s-5);
   max-height: 82vh;
   overflow-y: auto;
   border: 1px solid var(--border);
@@ -884,9 +893,11 @@ button.danger:hover {
 }
 
 .moves-list h2 {
-  margin: 0 0 14px;
-  font-size: 1.08rem;
-  color: var(--accent);
+  margin: 0 0 var(--s-3);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .progress-bar {
@@ -994,13 +1005,13 @@ button.danger:hover {
 #players-summary {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
 }
 
 .player-acc {
   text-align: center;
-  padding: 14px 8px;
+  padding: var(--s-3) var(--s-2);
   background: var(--bg-elevated);
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -1106,7 +1117,7 @@ button.danger:hover {
 }
 
 footer {
-  padding: 14px 20px;
+  padding: var(--s-3) var(--s-5);
   text-align: center;
   color: var(--text-muted);
   font-size: 0.8rem;
@@ -1141,23 +1152,35 @@ footer a:hover { text-decoration: underline; }
 .explore-banner button.small {
   font-size: 0.8rem;
   padding: 5px 12px;
+  min-height: 36px;
 }
 
-/* Painel da Engine ao Vivo */
+/* Painel da Engine ao Vivo
+   Compacto no empty state (sem partida) pra o tabuleiro mandar.
+   Com data-has-game: chrome denso, linhas com teto de altura. */
 .card.live-engine {
   width: 100%;
   max-width: var(--panel-max);
   margin: 0;
+  padding: var(--s-3) var(--s-4);
 }
 
 .live-engine-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  gap: var(--s-2);
+  margin-bottom: 0;
 }
 
-.live-engine-head h2 { margin: 0; }
+.live-engine-head h2 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+body[data-has-game] .live-engine-head {
+  margin-bottom: var(--s-2);
+}
 
 .engine-status {
   display: inline-flex;
@@ -1170,6 +1193,7 @@ footer a:hover { text-decoration: underline; }
   border-radius: 999px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .engine-status-dot {
@@ -1193,27 +1217,30 @@ footer a:hover { text-decoration: underline; }
 
 .live-engine-meta {
   display: flex;
-  gap: 14px;
-  font-size: 0.78rem;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+  font-size: 0.75rem;
   color: var(--text-muted);
-  margin-bottom: 10px;
+  margin-bottom: var(--s-2);
   font-family: var(--font-mono);
 }
 
 .live-engine-lines {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--s-1);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  max-height: 7.5rem;
+  overflow-y: auto;
 }
 
 .engine-line {
   display: grid;
-  grid-template-columns: 58px 1fr;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  grid-template-columns: 52px 1fr;
+  gap: var(--s-2);
+  padding: 5px var(--s-2);
+  border-radius: var(--radius-sm);
   align-items: baseline;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -1243,9 +1270,10 @@ footer a:hover { text-decoration: underline; }
 
 .live-engine-controls {
   display: flex;
-  gap: 16px;
-  margin-top: 12px;
-  font-size: 0.82rem;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  margin-top: var(--s-3);
+  font-size: 0.8rem;
   color: var(--text-muted);
 }
 
@@ -1253,9 +1281,43 @@ footer a:hover { text-decoration: underline; }
   background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  padding: 4px var(--s-2);
   font-family: inherit;
+  min-height: 36px;
+}
+
+.engine-depth-hint {
+  margin-top: var(--s-2);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.engine-hint {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: var(--s-2) 0;
+}
+
+/* Empty state (sem partida): esconde chrome denso no desktop/tablet.
+   No mobile (aba Engine) o usuário pode abrir o card completo — ver MQ. */
+body:not([data-has-game]) .live-engine-meta,
+body:not([data-has-game]) .live-engine-controls,
+body:not([data-has-game]) .engine-depth-hint {
+  display: none;
+}
+
+body:not([data-has-game]) .card.live-engine {
+  padding: var(--s-2) var(--s-4);
+}
+
+body:not([data-has-game]) .live-engine-head {
+  margin-bottom: var(--s-1);
+}
+
+body:not([data-has-game]) .live-engine-lines {
+  max-height: none;
 }
 
 /* Toasts */
@@ -1314,9 +1376,9 @@ footer a:hover { text-decoration: underline; }
 .summary-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
   border-top: 1px solid var(--border);
 }
 
@@ -1325,11 +1387,11 @@ button.secondary {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: var(--s-2) var(--s-3);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  min-height: 40px;
+  min-height: 44px;
 }
 
 button.secondary:hover {
@@ -1338,27 +1400,50 @@ button.secondary:hover {
 }
 
 /* ============================================================
-   Media Queries & Responsividade (Desktop / Mobile)
+   Media Queries
+   Desktop ≥1101 | Tablet 768–1100 | Mobile ≤767 | Small ≤600
    ============================================================ */
 
+/* ---------- Desktop: 3 colunas, board hero, laterais sticky ---------- */
 @media (min-width: 1101px) {
   :root {
-    --panel-max: clamp(460px, calc(100vh - 188px), 1000px);
-    --panel-max: clamp(460px, calc(100dvh - 188px), 1000px);
+    /* Chrome vertical enxuto: header + controles; engine compacta embaixo */
+    --panel-max: clamp(460px, calc(100vh - 156px), 1000px);
+    --panel-max: clamp(460px, calc(100dvh - 156px), 1000px);
   }
 
   main {
     max-width: 1680px;
     grid-template-columns: minmax(268px, 1fr) minmax(0, var(--panel-max)) minmax(268px, 1fr);
-    column-gap: clamp(24px, 3vw, 48px);
+    column-gap: clamp(var(--s-5), 2.8vw, 40px);
+    row-gap: var(--s-4);
+    padding: var(--s-5) var(--s-6);
     justify-content: center;
+    align-items: start;
+  }
+
+  /* Colunas laterais com a mesma “caixa” de altura e scroll interno */
+  .sidebar {
+    position: sticky;
+    top: var(--sticky-top);
+    align-self: start;
+    max-height: var(--col-max-h);
+    overflow-y: auto;
+    overflow-x: hidden;
+    gap: var(--s-4);
+    padding-right: 2px;
   }
 
   .review-col {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--s-4);
     min-width: 0;
+    position: sticky;
+    top: var(--sticky-top);
+    align-self: start;
+    max-height: var(--col-max-h);
+    overflow: hidden;
   }
 
   .review-col #move-info {
@@ -1368,26 +1453,113 @@ button.secondary:hover {
   }
 
   .review-col #move-classification { justify-content: flex-start; }
-  .review-col .moves-list { flex: 0 1 auto; }
+
+  .review-col .moves-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
 
   #summary-card { order: 1; }
   #coach-card   { order: 2; }
   #opening-card { order: 3; }
   #import-card  { order: 4; }
 
-  .board-section { gap: 18px; }
-  .board-stack { gap: 6px; }
-  .controls { margin-top: 10px; }
-  /* Mais respiro entre os botões de lance e o card da engine ao vivo */
-  .card.live-engine { margin-top: 6px; }
+  .board-section {
+    gap: var(--s-5);
+  }
+
+  .board-stack {
+    gap: var(--s-2);
+  }
+
+  .controls {
+    margin-top: var(--s-2);
+  }
+
+  /* Respiro claro entre controles de lance e engine */
+  .card.live-engine {
+    margin-top: var(--s-2);
+  }
 }
 
-@media (max-width: 1100px) {
+/* ---------- Tablet: 2 colunas (board | painéis), sem abas mobile ---------- */
+@media (min-width: 768px) and (max-width: 1100px) {
+  :root {
+    --panel-max: min(100%, calc(100svh - 200px), 640px);
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+    column-gap: var(--s-4);
+    row-gap: var(--s-4);
+    padding: var(--s-4);
+    max-width: 1200px;
+    align-items: start;
+  }
+
+  .sidebar,
+  .review-col {
+    display: contents;
+  }
+
+  .board-section {
+    grid-column: 1;
+    grid-row: 1;
+    position: sticky;
+    top: var(--s-3);
+    align-self: start;
+    gap: var(--s-4);
+    max-height: calc(100dvh - var(--s-5));
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 5;
+  }
+
+  .board-stack {
+    gap: var(--s-2);
+  }
+
+  .board-tabs {
+    display: none !important;
+  }
+
+  /* Coluna direita: fluxo natural (import → lances → resumo…) */
+  #import-card      { grid-column: 2; }
+  #move-info        { grid-column: 2; }
+  .moves-list       { grid-column: 2; max-height: min(48vh, 420px); }
+  #summary-card     { grid-column: 2; }
+  #coach-card       { grid-column: 2; }
+  #opening-card     { grid-column: 2; }
+
+  #move-info,
+  #import-card,
+  .moves-list,
+  #summary-card,
+  #coach-card,
+  #opening-card {
+    width: 100%;
+    max-width: none;
+  }
+
+  header {
+    padding: var(--s-3) var(--s-4);
+  }
+
+  .card.live-engine {
+    margin-top: var(--s-1);
+  }
+}
+
+/* ---------- Mobile: coluna única, sticky board + abas ---------- */
+@media (max-width: 767px) {
   main {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 12px;
+    gap: var(--s-4);
+    padding: var(--s-3);
   }
 
   .sidebar,
@@ -1395,9 +1567,7 @@ button.secondary:hover {
   .moves-list { max-height: none; }
 
   :root {
-    /* 100% (não 100vw): no mobile 100vw costuma ser uns px maior que a área
-       útil e gera overflow horizontal alternado ao mudar o lance (badge/seta
-       de um lado ou do outro). A % resolve no elemento que usa o token. */
+    /* 100% (não 100vw): evita overflow horizontal alternado no iOS Safari */
     --panel-max: min(100%, calc(100vh - 330px), 720px);
     --panel-max: min(100%, calc(100svh - 330px), 720px);
   }
@@ -1406,8 +1576,8 @@ button.secondary:hover {
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 4px;
-    padding: 10px 14px;
+    gap: var(--s-1);
+    padding: var(--s-2) var(--s-3);
   }
 
   header .tagline { flex: 0 1 auto; max-width: 36ch; }
@@ -1435,19 +1605,29 @@ button.secondary:hover {
     margin-inline: auto;
   }
 
+  /* Respiro entre sticky e o painel da aba ativa */
+  #move-info,
+  #import-card,
+  .moves-list,
+  #summary-card,
+  #coach-card,
+  #opening-card,
+  #live-engine-card {
+    margin-top: var(--s-1);
+  }
+
   /* Board Stack Sticky no Topo Mobile
      Tabuleiro + barras + controles + abas num único sticky. Sem transform /
-     will-change: essas propriedades criam layer GPU e no iOS o tabuleiro
-     "treme" subpixel pra esquerda/direita a cada re-render do lance. */
+     will-change: no iOS o tabuleiro "treme" subpixel se criar layer GPU. */
   .board-stack {
     position: sticky;
     top: 0;
     z-index: 30;
-    gap: 6px;
+    gap: var(--s-2);
     width: 100%;
     max-width: 100%;
     margin: 0;
-    padding: 4px 0 8px;
+    padding: var(--s-1) 0 var(--s-3);
     background: var(--bg);
     box-shadow: 0 8px 16px -6px rgba(0, 0, 0, 0.85);
     box-sizing: border-box;
@@ -1480,17 +1660,19 @@ button.secondary:hover {
   }
   .eval-bar { border-radius: 0 4px 4px 0; }
 
-  .player-bar { padding: 6px 12px; font-size: 0.88rem; }
-  .controls button { padding: 6px 14px; min-height: 42px; }
+  .player-bar { padding: 6px var(--s-3); font-size: 0.88rem; }
+  .controls { margin-top: 0; }
+  .controls button { padding: 6px 14px; min-height: 44px; }
 
   /* Segmented Control Abas Mobile */
   .board-tabs {
     display: flex;
-    gap: 4px;
+    gap: var(--s-1);
     width: 100%;
     max-width: min(100%, max(var(--panel-max), 320px));
     margin-inline: auto;
-    padding: 4px;
+    margin-top: var(--s-1);
+    padding: var(--s-1);
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -1500,7 +1682,7 @@ button.secondary:hover {
   .board-tab {
     flex: 1 1 0;
     min-width: 0;
-    min-height: 42px;
+    min-height: 44px;
     padding: 6px 6px;
     border: none;
     border-radius: 7px;
@@ -1536,6 +1718,25 @@ button.secondary:hover {
     stroke: var(--accent);
   }
 
+  /* Na aba Engine, mostra o card completo mesmo sem partida (ajustes MultiPV/depth) */
+  body[data-mtab="engine"]:not([data-has-game]) .live-engine-meta,
+  body[data-mtab="engine"]:not([data-has-game]) .live-engine-controls,
+  body[data-mtab="engine"]:not([data-has-game]) .engine-depth-hint {
+    display: flex;
+  }
+
+  body[data-mtab="engine"]:not([data-has-game]) .live-engine-controls {
+    display: flex;
+  }
+
+  body[data-mtab="engine"]:not([data-has-game]) .engine-depth-hint {
+    display: block;
+  }
+
+  body[data-mtab="engine"]:not([data-has-game]) .card.live-engine {
+    padding: var(--s-4);
+  }
+
   body[data-mtab]:not([data-mtab="import"]) #import-card { display: none !important; }
   body[data-mtab]:not([data-mtab="moves"])  .moves-list  { display: none !important; }
   body[data-mtab]:not([data-mtab="report"]) #opening-card,
@@ -1546,13 +1747,13 @@ button.secondary:hover {
 }
 
 @media (max-width: 600px) {
-  header { padding: 8px 12px; }
+  header { padding: var(--s-2) var(--s-3); }
   header h1.brand img { height: 44px; }
   .tagline { font-size: 0.74rem; }
 
-  main { padding: 10px; gap: 10px; }
-  .card { padding: 14px; }
-  .moves-list { padding: 14px; }
+  main { padding: var(--s-2); gap: var(--s-3); }
+  .card { padding: var(--s-3) var(--s-4); }
+  .moves-list { padding: var(--s-3) var(--s-4); }
 
   textarea, input[type="text"], select { font-size: 16px; }
 }

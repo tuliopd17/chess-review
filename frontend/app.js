@@ -45,7 +45,7 @@ const state = {
   promoPending: null,      // { from, to, resolve } enquanto o diálogo de promoção está aberto
 
   // ----- Casca de app no mobile -----
-  mobileTab: null,         // "import" | "moves" | "report" | "engine" (só ≤900px)
+  mobileTab: null,         // "import" | "moves" | "report" | "engine" (só ≤767px)
 };
 
 const PREFS_KEY = "chess_review_prefs_v1";
@@ -390,15 +390,13 @@ function initTabs() {
 }
 
 // ============================================================
-// Casca de app (≤1100px — celular e tablet)
+// Casca de app (≤767px — celular)
 // ------------------------------------------------------------
-// Abaixo de 1100px não cabem três colunas, e a página deixa de ser uma pilha
-// infinita de cards: uma barra de abas presa no topo troca o painel que rola
-// embaixo. Nada some — os quatro painéis (importar, lances, resumo, engine)
-// continuam completos, a um toque um do outro. O breakpoint tem que casar com
-// o do style.css.
+// No telefone não cabem duas colunas: barra de abas sticky troca o painel.
+// Tablet (768–1100) usa layout de 2 colunas sem abas (ver style.css).
+// O breakpoint tem que casar com o do style.css.
 // ============================================================
-const MOBILE_SHELL_MQ = "(max-width: 1100px)";
+const MOBILE_SHELL_MQ = "(max-width: 767px)";
 const MOBILE_TABS = ["import", "moves", "report", "engine"];
 
 function isMobileShell() {
@@ -1090,6 +1088,7 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     renderMultiGamePicker(state.availableGames, state.gameIndex);
     autoDetectOrientation(cached.analysis.headers, playerUsername);
     showProgress(false);
+    setHasGame(true);
     renderAll(true);
     // Mobile: sai da aba de importar e cai direto no tabuleiro + lances.
     setMobileTab("moves");
@@ -1139,6 +1138,7 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
   // Auto-detecta orientação do tabuleiro: se o jogador está de pretas,
   // vira o tabuleiro pra ele ver da perspectiva dele.
   autoDetectOrientation(parsed.headers, playerUsername);
+  setHasGame(true);
   renderOpening(parsed.opening);
   renderPlayerBars();
   showProgress(true, 0, state.totalPlies);
@@ -1280,7 +1280,14 @@ function resetForNewAnalysis() {
   // Esconde o gráfico até a nova análise gerar dados (renderEvalChart revela).
   document.querySelector(".chart-wrapper").style.display = "none";
   clearMobileTabFlags();
+  setHasGame(false);
   goToPly(0);
+}
+
+/** Marca se há partida na tela — CSS compacta a engine no empty state. */
+function setHasGame(on) {
+  if (on) document.body.dataset.hasGame = "1";
+  else delete document.body.dataset.hasGame;
 }
 
 function showProgress(visible, current = 0, total = 0, label = "") {

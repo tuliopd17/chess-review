@@ -241,7 +241,21 @@
 
         <!-- Abas do app no mobile (≤767px). Escondidas no desktop e no tablet
              (2 colunas). Ficam DENTRO da .board-stack pra que um único sticky
-             segure tabuleiro + controles + abas. -->
+             segure tabuleiro + controles + abas.
+             Padrão bottom-sheet (Material 3): ao abrir uma aba o painel expande
+             e o tabuleiro some; o botão "Tabuleiro" colapsa de volta. -->
+        <div class="mobile-sheet-bar" id="mobile-sheet-bar" hidden>
+          <button type="button" class="mobile-sheet-collapse" id="btn-mobile-board" aria-label="Voltar ao tabuleiro">
+            <span class="mobile-sheet-handle" aria-hidden="true"></span>
+            <span class="mobile-sheet-collapse-inner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M3 12h18M12 3v18" />
+              </svg>
+              <span>Tabuleiro</span>
+            </span>
+          </button>
+        </div>
         <nav class="board-tabs" id="board-tabs" role="tablist" aria-label="Seções da análise">
           <button type="button" class="board-tab" role="tab" data-mtab="import" aria-selected="false" aria-controls="import-card">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>

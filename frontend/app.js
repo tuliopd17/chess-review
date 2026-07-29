@@ -46,6 +46,9 @@ const state = {
 
   // ----- Casca de app no mobile -----
   mobileTab: null,         // "import" | "moves" | "report" | "engine" (só ≤767px)
+  // Bottom sheet: "board" = tabuleiro em destaque; "expanded" = painel da aba
+  // ocupa a tela (Material 3 expanding bottom sheet).
+  mobilePanel: "board",
 };
 
 const PREFS_KEY = "chess_review_prefs_v1";
@@ -405,9 +408,11 @@ function isMobileShell() {
 
 /**
  * A barra de abas fica presa no topo (`position: sticky`, no CSS). O tabuleiro
- * rola junto com a página: ele tem UM tamanho e não muda mais depois que a tela
- * é montada — uma versão anterior encolhia a barra ao rolar e ficava mudando de
- * tamanho o tempo todo, o que atrapalhava mais do que ajudava.
+ * rola junto com a página em modo board. Em modo expanded (bottom sheet) o
+ * tabuleiro some e o painel da aba ganha altura útil de leitura.
+ *
+ * Padrão: Material Design 3 expanding bottom sheet — partial (board) ↔ full
+ * (painel). Collapse via botão "Tabuleiro", handle, ou clique num lance.
  */
 
 function initMobileTabs() {
@@ -416,7 +421,19 @@ function initMobileTabs() {
 
   bar.addEventListener("click", (e) => {
     const btn = e.target.closest(".board-tab");
-    if (btn) setMobileTab(btn.dataset.mtab);
+    if (!btn) return;
+    const tab = btn.dataset.mtab;
+    // Toque na aba já selecionada enquanto expandido → volta pro tabuleiro
+    // (atalho comum em bottom sheets). Senão, abre/expande o painel.
+    if (
+      isMobileShell() &&
+      state.mobilePanel === "expanded" &&
+      state.mobileTab === tab
+    ) {
+      setMobilePanel("board");
+      return;
+    }
+    setMobileTab(tab, { fromUser: true });
   });
 
   // Padrão de tablist no teclado: setas andam entre as abas.
@@ -428,16 +445,40 @@ function initMobileTabs() {
     const step = e.key === "ArrowRight" ? 1 : tabs.length - 1;
     const next = tabs[(i + step) % tabs.length];
     next.focus();
-    setMobileTab(next.dataset.mtab, { scroll: false });
+    setMobileTab(next.dataset.mtab, { scroll: false, fromUser: true });
     e.preventDefault();
+  });
+
+  const collapseBtn = document.getElementById("btn-mobile-board");
+  if (collapseBtn) {
+    collapseBtn.addEventListener("click", () => setMobilePanel("board"));
+  }
+
+  // Esc fecha o sheet expandido (volta pro tabuleiro).
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!isMobileShell() || state.mobilePanel !== "expanded") return;
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+    setMobilePanel("board");
   });
 
   const sync = () => {
     if (isMobileShell()) {
-      setMobileTab(state.mobileTab || defaultMobileTab(), { scroll: false });
+      const tab = state.mobileTab || defaultMobileTab();
+      // Sem partida: importa precisa de espaço — começa expandido.
+      // Com partida: prioriza o tabuleiro (modo board).
+      const hasGame = document.body.hasAttribute("data-has-game");
+      setMobileTab(tab, {
+        scroll: false,
+        expand: !hasGame && tab === "import",
+      });
     } else {
       // No desktop os quatro painéis convivem nas colunas — some com o filtro.
       delete document.body.dataset.mtab;
+      delete document.body.dataset.mpanel;
+      state.mobilePanel = "board";
+      const sheetBar = document.getElementById("mobile-sheet-bar");
+      if (sheetBar) sheetBar.hidden = true;
     }
   };
   window.matchMedia(MOBILE_SHELL_MQ).addEventListener("change", sync);
@@ -447,6 +488,43 @@ function initMobileTabs() {
 function defaultMobileTab() {
   // Sem partida na tela, a única coisa a fazer é importar uma.
   return currentMoves().length ? "moves" : "import";
+}
+
+/**
+ * Alterna entre tabuleiro em destaque e painel expandido (bottom sheet full).
+ * @param {"board"|"expanded"} mode
+ */
+function setMobilePanel(mode, opts = {}) {
+  if (mode !== "board" && mode !== "expanded") return;
+  state.mobilePanel = mode;
+
+  if (!isMobileShell()) {
+    delete document.body.dataset.mpanel;
+    const sheetBar = document.getElementById("mobile-sheet-bar");
+    if (sheetBar) sheetBar.hidden = true;
+    return;
+  }
+
+  document.body.dataset.mpanel = mode;
+  const sheetBar = document.getElementById("mobile-sheet-bar");
+  if (sheetBar) sheetBar.hidden = mode !== "expanded";
+
+  // Highcharts / tabuleiro precisam reflow quando o layout muda de tamanho.
+  if (mode === "expanded" && state.mobileTab === "report" && state.evalChart) {
+    requestAnimationFrame(() => { try { state.evalChart?.reflow(); } catch {} });
+  }
+  if (mode === "board") {
+    // O tabuleiro estava display:none — dispara resize pro cm-chessboard
+    // (ResizeObserver) recalcular a área.
+    requestAnimationFrame(() => {
+      try { window.dispatchEvent(new Event("resize")); } catch {}
+    });
+  }
+
+  if (opts.scroll !== false) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+  }
 }
 
 function setMobileTab(tab, opts = {}) {
@@ -462,6 +540,18 @@ function setMobileTab(tab, opts = {}) {
     if (on) b.removeAttribute("data-badge");
   });
 
+  // Toque do usuário → expande o sheet (conteúdo legível).
+  // Chamadas programáticas (início da análise etc.) passam expand:false
+  // pra manter o tabuleiro em destaque.
+  if (opts.expand === true || (opts.fromUser && opts.expand !== false)) {
+    setMobilePanel("expanded", { scroll: false });
+  } else if (opts.expand === false) {
+    setMobilePanel("board", { scroll: false });
+  } else if (!document.body.dataset.mpanel) {
+    // Primeira vez no shell mobile sem preferência explícita.
+    setMobilePanel("board", { scroll: false });
+  }
+
   // Highcharts mede o container ao criar; se ele estava em display:none o
   // gráfico nasce com largura 0. Reflow ao revelar a aba resolve.
   if (tab === "report" && state.evalChart) {
@@ -473,6 +563,12 @@ function setMobileTab(tab, opts = {}) {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
   }
+}
+
+/** Volta pro tabuleiro no mobile (sheet colapsado). No-op no desktop. */
+function showMobileBoard(opts = {}) {
+  if (!isMobileShell() || state.mobilePanel !== "expanded") return;
+  setMobilePanel("board", opts);
 }
 
 /** Pontinho de "tem coisa nova aqui" numa aba que não está aberta. */
@@ -1090,8 +1186,8 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     showProgress(false);
     setHasGame(true);
     renderAll(true);
-    // Mobile: sai da aba de importar e cai direto no tabuleiro + lances.
-    setMobileTab("moves");
+    // Mobile: sai da aba de importar e cai no tabuleiro (modo board) + lances.
+    setMobileTab("moves", { expand: false });
     flagMobileTab("report");
     return;
   }
@@ -1099,9 +1195,9 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
   resetForNewAnalysis();
   showProgress(true, 0, 0);
   // Mobile: a análise acontece na aba de lances (barra de progresso + os lances
-  // sendo classificados um a um). Deixar o usuário no formulário de importar
-  // seria olhar pra uma tela parada enquanto o WASM trabalha.
-  setMobileTab("moves");
+  // sendo classificados um a um). Tabuleiro em destaque pra ver as peças
+  // enquanto o WASM classifica.
+  setMobileTab("moves", { expand: false });
 
   // 1. Backend faz o parse do PGN e devolve a lista de lances + FENs + abertura.
   let parsed;
@@ -1496,7 +1592,12 @@ function buildMoveCell(move) {
 function bindMoveCellClicks(container) {
   container.querySelectorAll(".move-cell").forEach(cell => {
     const ply = parseInt(cell.dataset.ply, 10);
-    if (!isNaN(ply)) cell.onclick = () => goToPly(ply);
+    if (isNaN(ply)) return;
+    cell.onclick = () => {
+      goToPly(ply);
+      // Lista expandida: escolher um lance volta pro tabuleiro pra analisar.
+      showMobileBoard();
+    };
   });
 }
 
@@ -1567,12 +1668,14 @@ function renderCoach() {
     document.querySelectorAll("#coach-critical .critical-item").forEach(el => {
       el.onclick = () => {
         goToPly(parseInt(el.dataset.ply, 10));
+        // Mobile: fecha o sheet e mostra o tabuleiro na posição do ponto crítico.
+        showMobileBoard({ scroll: false });
         // Sobe pro tabuleiro pra ver o lance na hora (essencial no mobile, onde
         // os pontos críticos ficam bem abaixo do tabuleiro; inofensivo no PC).
         // Adiado em 2 frames: o goToPly mexe no scroll da lista de lances e isso
         // cancelava o scroll suave se disparado no mesmo tick (some no desktop).
         requestAnimationFrame(() => requestAnimationFrame(() => {
-          document.querySelector(".board-section")
+          document.getElementById("board-stack")
             ?.scrollIntoView({ behavior: "smooth", block: "start" });
         }));
       };
@@ -1757,7 +1860,11 @@ async function renderEvalChart() {
         cursor: "pointer",
         point: {
           events: {
-            click() { goToPly(this.options.ply); },
+            click() {
+              goToPly(this.options.ply);
+              // Gráfico no resumo expandido: clique no ponto → tabuleiro.
+              showMobileBoard();
+            },
           },
         },
       },
@@ -1868,7 +1975,8 @@ function goToPly(ply) {
   // Mobile: gruda o tabuleiro no topo e acompanha o lance ativo sob a barra.
   // rAF: o card de avaliação (#move-info) pode ter mudado de altura neste
   // tick ("Melhor linha" aparece/some) — medir antes deixava o lance cortado.
-  if (isMobileShell()) {
+  // Só no modo board (sheet colapsado); no expanded o tabuleiro está oculto.
+  if (isMobileShell() && state.mobilePanel === "board") {
     const cell = state.mobileTab === "moves" ? active : null;
     requestAnimationFrame(() => followActiveMoveOnPage(cell));
   }

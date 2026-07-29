@@ -806,6 +806,11 @@ button.danger:hover {
   display: none;
 }
 
+/* Chrome do bottom sheet expandido (só mobile, ver MQ ≤767) */
+.mobile-sheet-bar {
+  display: none;
+}
+
 /* ============================================================
    Banner de Avaliação do Lance (#move-info)
    ============================================================ */
@@ -1730,6 +1735,142 @@ button.secondary:hover {
   .board-tab[aria-selected="true"] svg {
     transform: scale(1.1);
     stroke: var(--accent);
+  }
+
+  /* ---------- Bottom sheet expandido (Material 3 expanding sheet) ----------
+     Tabuleiro some; chrome compacto (handle + Tabuleiro + controles + abas)
+     fica sticky; painel da aba ganha a altura útil da viewport. */
+  .mobile-sheet-bar {
+    display: none;
+    width: 100%;
+    max-width: min(100%, max(var(--panel-max), 320px));
+    margin-inline: auto;
+  }
+
+  body[data-mpanel="expanded"] .mobile-sheet-bar {
+    display: block;
+  }
+
+  .mobile-sheet-collapse {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 44px;
+    padding: 6px 12px 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-card);
+    color: var(--accent);
+    font-size: 0.88rem;
+    font-weight: 700;
+    box-shadow: var(--shadow-card);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .mobile-sheet-collapse:hover,
+  .mobile-sheet-collapse:focus-visible {
+    background: var(--bg-elevated);
+    border-color: var(--border-light);
+    outline: none;
+  }
+
+  .mobile-sheet-collapse:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-glow);
+  }
+
+  .mobile-sheet-handle {
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  .mobile-sheet-collapse-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-sheet-collapse-inner svg {
+    flex-shrink: 0;
+  }
+
+  /* Sheet full: libera a tela pro conteúdo da aba */
+  body[data-mpanel="expanded"] header,
+  body[data-mpanel="expanded"] footer {
+    display: none;
+  }
+
+  body[data-mpanel="expanded"] .board-wrap,
+  body[data-mpanel="expanded"] .player-bar {
+    display: none !important;
+  }
+
+  body[data-mpanel="expanded"] .board-stack {
+    padding: var(--s-2) 0 var(--s-2);
+    gap: var(--s-2);
+  }
+
+  /* Handle no topo do chrome sticky (padrão grab-handle do bottom sheet) */
+  body[data-mpanel="expanded"] .mobile-sheet-bar { order: 1; }
+  body[data-mpanel="expanded"] .controls         { order: 2; margin-top: 0; }
+  body[data-mpanel="expanded"] .explore-banner   { order: 3; }
+  body[data-mpanel="expanded"] .board-tabs       { order: 4; margin-top: 0; }
+
+  /* Painéis com altura real de leitura (~viewport menos chrome sticky) */
+  body[data-mpanel="expanded"] #import-card,
+  body[data-mpanel="expanded"] .moves-list,
+  body[data-mpanel="expanded"] #summary-card,
+  body[data-mpanel="expanded"] #coach-card,
+  body[data-mpanel="expanded"] #opening-card,
+  body[data-mpanel="expanded"] #live-engine-card {
+    min-height: calc(100svh - 168px);
+    max-width: 100%;
+  }
+
+  body[data-mpanel="expanded"] #move-info {
+    max-width: 100%;
+  }
+
+  /* Lista de lances: rola dentro do card no sheet expandido */
+  body[data-mpanel="expanded"][data-mtab="moves"] .moves-list {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100svh - 168px);
+    min-height: calc(100svh - 168px);
+    overflow: hidden;
+  }
+
+  body[data-mpanel="expanded"][data-mtab="moves"] #moves-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Resumo/report: gráfico e coach precisam de espaço vertical */
+  body[data-mpanel="expanded"][data-mtab="report"] #summary-card .chart-wrapper {
+    min-height: 180px;
+  }
+
+  body[data-mpanel="expanded"][data-mtab="report"] #eval-chart {
+    min-height: 160px;
+  }
+
+  /* Import/histórico: lista de partidas com mais folga no sheet expandido */
+  body[data-mpanel="expanded"][data-mtab="import"] .games-list {
+    max-height: min(55svh, 480px);
+  }
+
+  body[data-mpanel="expanded"][data-mtab="import"] #pgn-input {
+    min-height: 140px;
   }
 
   /* Na aba Engine, mostra o card completo mesmo sem partida (ajustes MultiPV/depth) */

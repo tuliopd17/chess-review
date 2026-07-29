@@ -580,47 +580,41 @@ function clearMobileTabFlags() {
 }
 
 /**
- * No mobile a lista de lances rola com a página (não tem scroll próprio), e a
- * barra do tabuleiro é sticky. Acompanhar o lance ativo, então, é rolar a
- * página — a lista passa POR BAIXO da barra e o tabuleiro fica parado.
+ * Mobile + tabuleiro sticky: estabiliza a viewport ao trocar de lance.
  *
- * A única coisa que ainda tirava o tabuleiro do lugar era o header do site:
- * enquanto ele não sai da tela, a barra ainda não encostou no topo e o
- * tabuleiro "sobe" junto com o scroll. Por isso o primeiro passo aqui é
- * encostar a barra no topo: a partir do primeiro lance o tabuleiro assume a
- * posição definitiva dele e não se mexe mais — só a lista embaixo.
+ * Histórico: a cada ◀/▶ a gente fazia scrollTo pra "acompanhar" o lance na
+ * lista. No iOS/Android, scroll na página com position:sticky recompõe o
+ * layer do board-stack e o tabuleiro treme (e o ResizeObserver do
+ * cm-chessboard redesenha se a largura variar 1px por causa da scrollbar).
  *
- * Também zera scrollX: overflow residual (badge/seta no canto) faz o iOS
- * "pular" a página pra esquerda/direita a cada lance.
+ * Política atual (prioriza estabilidade do tabuleiro):
+ *  1) Só pinna o sticky se o header ainda estiver cobrindo o topo.
+ *  2) Com o sticky já colado, NÃO mexe em scrollY — a lista de lances rola
+ *     por conta própria (max-height no CSS) via scrollTop em goToPly.
+ *  3) Corrige scrollX residual (overflow horizontal do iOS) sem mexer no Y.
  */
-function followActiveMoveOnPage(cell) {
-  if (!isMobileShell()) return;
+function followActiveMoveOnPage(_cell) {
+  if (!isMobileShell() || state.mobilePanel !== "board") return;
 
   const stack = document.getElementById("board-stack");
-  const y = window.scrollY;
+  if (!stack) return;
+
+  const y = window.scrollY || 0;
   const x = window.scrollX || 0;
+  const top = stack.getBoundingClientRect().top;
 
-  // 1) Encosta a barra sticky no topo (some com o header). Usa a posição da
-  //    barra no DOCUMENTO — altura do header ignora o padding do <main>.
-  const stackTopDoc = stack ? Math.round(stack.getBoundingClientRect().top + y) : 0;
-  let alvo = Math.max(y, stackTopDoc);
-  const empurrao = alvo - y;
-
-  // 2) Com a barra fixa, mantém o lance ativo na área útil abaixo dela.
-  if (cell) {
-    const topo = (stack ? stack.offsetHeight : 0) + 8;
-    const base = window.innerHeight - 8;
-    const r = cell.getBoundingClientRect();
-    const cellTop = r.top - empurrao;
-    const cellBottom = r.bottom - empurrao;
-    if (cellTop < topo) alvo -= (topo - cellTop);
-    else if (cellBottom > base) alvo += (cellBottom - base);
+  // Sticky ainda não colou (header visível): um único pin, sem micro-ajustes.
+  if (top > 2) {
+    const alvo = Math.max(0, Math.round(y + top));
+    if (Math.abs(alvo - y) > 2 || Math.abs(x) > 0) {
+      window.scrollTo({ top: alvo, left: 0, behavior: "auto" });
+    }
+    return;
   }
 
-  // Sem animação: ◀/▶ rápido não pode virar fila de scrolls suaves.
-  alvo = Math.max(0, Math.round(alvo));
-  if (Math.abs(alvo - y) > 1 || Math.abs(x) > 0) {
-    window.scrollTo({ top: alvo, left: 0, behavior: "auto" });
+  // Já colado: só zera drift horizontal. Qualquer scrollY aqui = shake.
+  if (Math.abs(x) > 0) {
+    window.scrollTo({ top: y, left: 0, behavior: "auto" });
   }
 }
 
@@ -1509,7 +1503,9 @@ function renderPlayerBars() {
     const r = resultFor(p.color);
     const chip = r ? `<span class="player-result ${r.cls}">${r.label}</span>` : "";
     const isTurn = turnColor === p.color && moves.length > 0 && state.currentPly < moves.length;
-    const turnDot = isTurn ? `<span class="player-turn-dot" title="Vez de jogar"></span>` : "";
+    // Sempre reserva o slot do turn-dot: sumir/aparecer a cada lance mudava
+    // a largura da barra e contribuía pro "shake" do sticky no mobile.
+    const turnDot = `<span class="player-turn-dot${isTurn ? "" : " is-idle"}" title="Vez de jogar" ${isTurn ? "" : 'aria-hidden="true"'}></span>`;
     return `<span class="player-disc ${p.color}"></span>
             <span class="player-name">${escapeHtml(p.name)}</span>
             ${turnDot}
@@ -1970,13 +1966,10 @@ function goToPly(ply) {
   renderPlayerBars();
   renderBoardOverlays();
 
-  // Mobile: gruda o tabuleiro no topo e acompanha o lance ativo sob a barra.
-  // rAF: o card de avaliação (#move-info) pode ter mudado de altura neste
-  // tick ("Melhor linha" aparece/some) — medir antes deixava o lance cortado.
-  // Só no modo board (sheet colapsado); no expanded o tabuleiro está oculto.
+  // Mobile: no máximo pinna o sticky uma vez. Não rola a página a cada lance
+  // (isso fazia o board tremer). Lista acompanha via scrollTop interno abaixo.
   if (isMobileShell() && state.mobilePanel === "board") {
-    const cell = state.mobileTab === "moves" ? active : null;
-    requestAnimationFrame(() => followActiveMoveOnPage(cell));
+    requestAnimationFrame(() => followActiveMoveOnPage(active));
   }
 
   // Dispara análise ao vivo da posição atual (se engine WASM tá pronta E não

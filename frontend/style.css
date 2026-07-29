@@ -75,6 +75,10 @@ html {
      sem criar contêiner de rolagem. `hidden` fica como fallback. */
   overflow-x: hidden;
   overflow-x: clip;
+  /* Evita a página "saltar" 1px de largura quando a scrollbar vertical
+     aparece/some (ex.: #move-info ganha "Melhor linha") — no mobile isso
+     disparava o ResizeObserver do cm-chessboard e redesenhava o tabuleiro. */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -558,6 +562,13 @@ button.danger:hover {
   display: inline-block;
   flex: 0 0 8px;
   animation: cr-turn-pulse 1.2s ease-in-out infinite;
+}
+
+/* Slot sempre presente — evita reflow da player-bar a cada troca de vez */
+.player-turn-dot.is-idle {
+  visibility: hidden;
+  animation: none;
+  box-shadow: none;
 }
 
 @keyframes cr-turn-pulse {
@@ -1662,6 +1673,9 @@ button.secondary:hover {
     flex-shrink: 0;
     gap: 6px;
     margin: 0 auto;
+    /* Largura estável: ResizeObserver do cm-chessboard redesenha o SVG se
+       clientWidth mudar 1px (scrollbar / sticky recompose). */
+    contain: layout;
   }
 
   .board-container {
@@ -1679,9 +1693,29 @@ button.secondary:hover {
   }
   .eval-bar { border-radius: 0 4px 4px 0; }
 
-  .player-bar { padding: 6px var(--s-3); font-size: 0.88rem; }
+  .player-bar {
+    padding: 6px var(--s-3);
+    font-size: 0.88rem;
+    max-width: 100%;
+  }
   .controls { margin-top: 0; }
   .controls button { padding: 6px 14px; min-height: 44px; }
+
+  /* Lista de lances com scroll próprio sob o sticky — goToPly usa scrollTop
+     interno em vez de scrollTo na página (que fazia o board tremer). */
+  body[data-mtab="moves"][data-mpanel="board"] .moves-list {
+    max-height: min(42vh, 360px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Altura mínima no card do lance: "Melhor linha" aparece/some sem
+     empurrar tanto o documento (e a scrollbar) a cada ply. */
+  #move-info {
+    min-height: 4.5rem;
+  }
 
   /* Segmented Control Abas Mobile */
   .board-tabs {

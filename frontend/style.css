@@ -420,10 +420,12 @@ button.danger:hover {
   display: none;
 }
 
-/* Lista de Partidas */
+/* Lista de Partidas / histórico
+   overflow-x: hidden — o hover não deve abrir barra horizontal. */
 .games-list {
   margin-top: var(--s-3);
   max-height: 340px;
+  overflow-x: hidden;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -437,20 +439,29 @@ button.danger:hover {
   border: 1px solid var(--border);
   cursor: pointer;
   font-size: 0.85rem;
-  transition: all 0.15s ease;
+  min-width: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .game-item:hover {
   background: var(--bg-active);
   border-color: var(--border-light);
-  transform: translateX(2px);
 }
 
 .game-item .players {
   display: flex;
   justify-content: space-between;
+  gap: var(--s-2);
   font-weight: 600;
   margin-bottom: 4px;
+  min-width: 0;
+}
+
+.game-item .players > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .game-item .result {
@@ -461,6 +472,9 @@ button.danger:hover {
 .game-item .meta {
   color: var(--text-muted);
   font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ============================================================

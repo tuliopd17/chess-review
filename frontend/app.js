@@ -464,13 +464,11 @@ function initMobileTabs() {
 
   const sync = () => {
     if (isMobileShell()) {
-      const tab = state.mobileTab || defaultMobileTab();
-      // Sem partida: importa precisa de espaço — começa expandido.
-      // Com partida: prioriza o tabuleiro (modo board).
-      const hasGame = document.body.hasAttribute("data-has-game");
-      setMobileTab(tab, {
+      // Sempre prioriza o tabuleiro ao montar/resize o shell — expandir é
+      // só ação explícita do usuário (toque na aba).
+      setMobileTab(state.mobileTab || defaultMobileTab(), {
         scroll: false,
-        expand: !hasGame && tab === "import",
+        expand: false,
       });
     } else {
       // No desktop os quatro painéis convivem nas colunas — some com o filtro.

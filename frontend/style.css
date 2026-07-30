@@ -812,16 +812,6 @@ button.danger:hover {
   height: 24px;
 }
 
-/* Abas no Mobile */
-.board-tabs {
-  display: none;
-}
-
-/* Chrome do bottom sheet expandido (só mobile, ver MQ ≤767) */
-.mobile-sheet-bar {
-  display: none;
-}
-
 /* ============================================================
    Banner de Avaliação do Lance (#move-info)
    ============================================================ */
@@ -1552,10 +1542,6 @@ button.secondary:hover {
     gap: var(--s-2);
   }
 
-  .board-tabs {
-    display: none !important;
-  }
-
   /* Coluna direita: fluxo natural (import → lances → resumo…) */
   #import-card      { grid-column: 2; }
   #move-info        { grid-column: 2; }
@@ -1583,45 +1569,63 @@ button.secondary:hover {
   }
 }
 
-/* ---------- Mobile: coluna única, sticky board + abas ---------- */
+/* ---------- Mobile: coluna única sequencial (sem abas) ----------
+   Tabuleiro sticky no topo; o resto rola em ordem de leitura natural.
+   Com partida: board → lance → lances → resumo → coach → abertura → engine → import.
+   Sem partida: board → import (CTA) → lances (vazio) → engine. */
 @media (max-width: 767px) {
+  :root {
+    /* 100% (não 100vw): evita overflow horizontal alternado no iOS Safari */
+    --panel-max: min(100%, 560px);
+    /* Cap de 400px: sobra espaço pra o card do lance “vazar” sob o sticky
+       e convidar o scroll sequencial (review legível sem abas). */
+    --m-board-max: min(100%, calc(100svh - 240px), 400px);
+  }
+
   main {
     display: flex;
     flex-direction: column;
-    gap: var(--s-4);
-    padding: var(--s-3);
+    gap: var(--s-3);
+    padding: var(--s-2) var(--s-3) max(var(--s-6), env(safe-area-inset-bottom, 0px));
   }
 
   .sidebar,
-  .review-col { display: contents; }
-  .moves-list { max-height: none; }
-
-  :root {
-    /* 100% (não 100vw): evita overflow horizontal alternado no iOS Safari */
-    --panel-max: min(100%, calc(100vh - 330px), 720px);
-    --panel-max: min(100%, calc(100svh - 330px), 720px);
+  .review-col,
+  .board-section {
+    display: contents;
   }
 
   header {
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: var(--s-1);
+    gap: 2px;
     padding: var(--s-2) var(--s-3);
   }
 
-  header .tagline { flex: 0 1 auto; max-width: 36ch; }
+  header .tagline {
+    flex: 0 1 auto;
+    max-width: 34ch;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    opacity: 0.9;
+  }
 
-  .board-section { display: contents; }
-
+  /* Ordem sequencial — com partida */
   .board-stack      { order: 1; }
-  #move-info        { order: 3; }
-  #import-card      { order: 4; }
-  .moves-list       { order: 5; }
-  #summary-card     { order: 6; }
-  #coach-card       { order: 7; }
-  #opening-card     { order: 8; }
-  #live-engine-card { order: 9; }
+  #move-info        { order: 2; }
+  .moves-list       { order: 3; }
+  #summary-card     { order: 4; }
+  #coach-card       { order: 5; }
+  #opening-card     { order: 6; }
+  #live-engine-card { order: 7; }
+  #import-card      { order: 8; }
+
+  /* Sem partida: import vira o CTA principal logo abaixo do tabuleiro;
+     lista de lances vazia some (o empty state do desktop não ajuda no phone). */
+  body:not([data-has-game]) #import-card      { order: 2; }
+  body:not([data-has-game]) .moves-list       { display: none; }
+  body:not([data-has-game]) #live-engine-card { order: 3; }
 
   #move-info,
   #import-card,
@@ -1635,31 +1639,19 @@ button.secondary:hover {
     margin-inline: auto;
   }
 
-  /* Respiro entre sticky e o painel da aba ativa */
-  #move-info,
-  #import-card,
-  .moves-list,
-  #summary-card,
-  #coach-card,
-  #opening-card,
-  #live-engine-card {
-    margin-top: var(--s-1);
-  }
-
-  /* Board Stack Sticky no Topo Mobile
-     Tabuleiro + barras + controles + abas num único sticky. Sem transform /
-     will-change: no iOS o tabuleiro "treme" subpixel se criar layer GPU. */
+  /* Tabuleiro sticky: hero sempre à vista enquanto se rola a análise.
+     Sem transform/will-change — no iOS isso tremia o SVG do board. */
   .board-stack {
     position: sticky;
     top: 0;
     z-index: 30;
-    gap: var(--s-2);
+    gap: var(--s-1);
     width: 100%;
     max-width: 100%;
     margin: 0;
-    padding: var(--s-1) 0 var(--s-3);
+    padding: var(--s-1) 0 var(--s-2);
     background: var(--bg);
-    box-shadow: 0 8px 16px -6px rgba(0, 0, 0, 0.85);
+    box-shadow: 0 10px 18px -10px rgba(0, 0, 0, 0.9);
     box-sizing: border-box;
     overflow: hidden;
     touch-action: pan-y;
@@ -1668,10 +1660,9 @@ button.secondary:hover {
   .board-wrap {
     box-sizing: border-box;
     width: 100%;
-    max-width: min(100%, calc(100vh - 330px), 720px);
-    max-width: min(100%, calc(100svh - 330px), 720px);
+    max-width: var(--m-board-max);
     flex-shrink: 0;
-    gap: 6px;
+    gap: 5px;
     margin: 0 auto;
     /* Largura estável: ResizeObserver do cm-chessboard redesenha o SVG se
        clientWidth mudar 1px (scrollbar / sticky recompose). */
@@ -1679,271 +1670,137 @@ button.secondary:hover {
   }
 
   .board-container {
-    border-radius: 0;
+    border-radius: 6px;
     box-sizing: border-box;
     overflow: hidden;
     touch-action: manipulation;
   }
-  #board, .cm-chessboard {
+
+  #board,
+  .cm-chessboard {
     width: 100%;
     height: 100%;
-    border-radius: 0;
-    clip-path: none;
+    border-radius: 6px;
+    clip-path: inset(0 round 6px);
     box-sizing: border-box;
   }
-  .eval-bar { border-radius: 0 4px 4px 0; }
+
+  .eval-bar {
+    width: 18px;
+    flex: 0 0 18px;
+    border-radius: 4px;
+  }
+
+  .eval-bar-text {
+    font-size: 0.62rem;
+  }
 
   .player-bar {
-    padding: 6px var(--s-3);
-    font-size: 0.88rem;
-    max-width: 100%;
-  }
-  .controls { margin-top: 0; }
-  .controls button { padding: 6px 14px; min-height: 44px; }
-
-  /* Lista de lances com scroll próprio sob o sticky — goToPly usa scrollTop
-     interno em vez de scrollTo na página (que fazia o board tremer). */
-  body[data-mtab="moves"][data-mpanel="board"] .moves-list {
-    max-height: min(42vh, 360px);
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-  }
-
-  /* Altura mínima no card do lance: "Melhor linha" aparece/some sem
-     empurrar tanto o documento (e a scrollbar) a cada ply. */
-  #move-info {
-    min-height: 4.5rem;
-  }
-
-  /* Segmented Control Abas Mobile */
-  .board-tabs {
-    display: flex;
-    gap: var(--s-1);
-    width: 100%;
-    max-width: min(100%, max(var(--panel-max), 320px));
-    margin-inline: auto;
-    margin-top: var(--s-1);
-    padding: var(--s-1);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: var(--shadow-card);
-  }
-
-  .board-tab {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 44px;
-    padding: 6px 6px;
-    border: none;
-    border-radius: 7px;
-    background: transparent;
-    color: var(--text-muted);
+    padding: 5px var(--s-3);
     font-size: 0.82rem;
-    font-weight: 700;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    transition: all 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .board-tab svg {
-    flex-shrink: 0;
-    transition: transform 0.15s ease, stroke 0.15s ease;
-  }
-
-  .board-tab[aria-selected="true"] {
-    background: var(--bg-elevated);
-    color: var(--accent);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  }
-
-  .board-tab[aria-selected="true"] svg {
-    transform: scale(1.1);
-    stroke: var(--accent);
-  }
-
-  /* ---------- Bottom sheet expandido (Material 3 expanding sheet) ----------
-     Tabuleiro some; chrome compacto (handle + Tabuleiro + controles + abas)
-     fica sticky; painel da aba ganha a altura útil da viewport. */
-  .mobile-sheet-bar {
-    display: none;
-    width: 100%;
-    max-width: min(100%, max(var(--panel-max), 320px));
+    max-width: var(--m-board-max);
     margin-inline: auto;
-  }
-
-  body[data-mpanel="expanded"] .mobile-sheet-bar {
-    display: block;
-  }
-
-  .mobile-sheet-collapse {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
     width: 100%;
+    border-radius: 6px;
+  }
+
+  .controls {
+    margin-top: 0;
+    max-width: var(--m-board-max);
+    margin-inline: auto;
+    width: 100%;
+    gap: var(--s-1);
+  }
+
+  .controls button {
+    padding: 6px 12px;
     min-height: 44px;
-    padding: 6px 12px 8px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--bg-card);
-    color: var(--accent);
-    font-size: 0.88rem;
-    font-weight: 700;
-    box-shadow: var(--shadow-card);
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    flex: 1 1 0;
   }
 
-  .mobile-sheet-collapse:hover,
-  .mobile-sheet-collapse:focus-visible {
-    background: var(--bg-elevated);
-    border-color: var(--border-light);
-    outline: none;
+  .explore-banner {
+    max-width: var(--m-board-max);
+    margin-inline: auto;
+    width: 100%;
+    font-size: 0.8rem;
   }
 
-  .mobile-sheet-collapse:focus-visible {
-    box-shadow: 0 0 0 2px var(--accent-glow);
+  /* Cards de análise: densidade confortável pro polegar */
+  #move-info {
+    min-height: 4.25rem;
+    padding: var(--s-3);
   }
 
-  .mobile-sheet-handle {
-    display: block;
-    width: 36px;
-    height: 4px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.22);
+  #move-classification {
+    font-size: 0.98rem;
   }
 
-  .mobile-sheet-collapse-inner {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+  .moves-list {
+    max-height: none;
+    overflow: visible;
+    padding: var(--s-3) var(--s-4);
   }
 
-  .mobile-sheet-collapse-inner svg {
-    flex-shrink: 0;
+  /* Lista de partidas no import: teto razoável sem virar sheet fullscreen */
+  .games-list {
+    max-height: min(48svh, 360px);
   }
 
-  /* Sheet full: libera a tela pro conteúdo da aba */
-  body[data-mpanel="expanded"] header,
-  body[data-mpanel="expanded"] footer {
-    display: none;
+  #pgn-input {
+    min-height: 110px;
   }
 
-  body[data-mpanel="expanded"] .board-wrap,
-  body[data-mpanel="expanded"] .player-bar {
-    display: none !important;
-  }
-
-  body[data-mpanel="expanded"] .board-stack {
-    padding: var(--s-2) 0 var(--s-2);
-    gap: var(--s-2);
-  }
-
-  /* Handle no topo do chrome sticky (padrão grab-handle do bottom sheet) */
-  body[data-mpanel="expanded"] .mobile-sheet-bar { order: 1; }
-  body[data-mpanel="expanded"] .controls         { order: 2; margin-top: 0; }
-  body[data-mpanel="expanded"] .explore-banner   { order: 3; }
-  body[data-mpanel="expanded"] .board-tabs       { order: 4; margin-top: 0; }
-
-  /* Painéis com altura real de leitura (~viewport menos chrome sticky) */
-  body[data-mpanel="expanded"] #import-card,
-  body[data-mpanel="expanded"] .moves-list,
-  body[data-mpanel="expanded"] #summary-card,
-  body[data-mpanel="expanded"] #coach-card,
-  body[data-mpanel="expanded"] #opening-card,
-  body[data-mpanel="expanded"] #live-engine-card {
-    min-height: calc(100svh - 168px);
-    max-width: 100%;
-  }
-
-  body[data-mpanel="expanded"] #move-info {
-    max-width: 100%;
-  }
-
-  /* Lista de lances: rola dentro do card no sheet expandido */
-  body[data-mpanel="expanded"][data-mtab="moves"] .moves-list {
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100svh - 168px);
-    min-height: calc(100svh - 168px);
-    overflow: hidden;
-  }
-
-  body[data-mpanel="expanded"][data-mtab="moves"] #moves-container {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-  }
-
-  /* Resumo/report: gráfico e coach precisam de espaço vertical */
-  body[data-mpanel="expanded"][data-mtab="report"] #summary-card .chart-wrapper {
-    min-height: 180px;
-  }
-
-  body[data-mpanel="expanded"][data-mtab="report"] #eval-chart {
+  /* Gráfico de eval legível no fluxo sequencial */
+  #summary-card .chart-wrapper {
     min-height: 160px;
   }
 
-  /* Import/histórico: lista de partidas com mais folga no sheet expandido */
-  body[data-mpanel="expanded"][data-mtab="import"] .games-list {
-    max-height: min(55svh, 480px);
+  #eval-chart {
+    min-height: 150px;
   }
 
-  body[data-mpanel="expanded"][data-mtab="import"] #pgn-input {
-    min-height: 140px;
-  }
-
-  /* Na aba Engine, mostra o card completo mesmo sem partida (ajustes MultiPV/depth) */
-  body[data-mtab="engine"]:not([data-has-game]) .live-engine-meta,
-  body[data-mtab="engine"]:not([data-has-game]) .live-engine-controls,
-  body[data-mtab="engine"]:not([data-has-game]) .engine-depth-hint {
+  /* Engine completa no mobile (settings sempre acessíveis no final do scroll) */
+  body:not([data-has-game]) .live-engine-meta,
+  body:not([data-has-game]) .live-engine-controls,
+  body:not([data-has-game]) .engine-depth-hint {
     display: flex;
   }
 
-  body[data-mtab="engine"]:not([data-has-game]) .live-engine-controls {
+  body:not([data-has-game]) .live-engine-controls {
     display: flex;
   }
 
-  body[data-mtab="engine"]:not([data-has-game]) .engine-depth-hint {
+  body:not([data-has-game]) .engine-depth-hint {
     display: block;
   }
 
-  body[data-mtab="engine"]:not([data-has-game]) .card.live-engine {
-    padding: var(--s-4);
+  body:not([data-has-game]) .card.live-engine {
+    padding: var(--s-3) var(--s-4);
   }
 
-  body[data-mtab]:not([data-mtab="import"]) #import-card { display: none !important; }
-  body[data-mtab]:not([data-mtab="moves"])  .moves-list  { display: none !important; }
-  body[data-mtab]:not([data-mtab="report"]) #opening-card,
-  body[data-mtab]:not([data-mtab="report"]) #summary-card,
-  body[data-mtab]:not([data-mtab="report"]) #coach-card { display: none !important; }
-  body[data-mtab]:not([data-mtab="engine"]) #live-engine-card { display: none !important; }
-  body[data-mtab="import"] #move-info { display: none !important; }
+  /* Toasts sobem um pouco pra não colar na home bar do iOS */
+  .toast-root {
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    right: 12px;
+    left: 12px;
+    max-width: none;
+    align-items: stretch;
+  }
 }
 
 @media (max-width: 600px) {
   header { padding: var(--s-2) var(--s-3); }
-  header h1.brand img { height: 44px; }
-  .tagline { font-size: 0.74rem; }
+  header h1.brand img { height: 40px; }
+  .tagline { font-size: 0.7rem; }
 
-  main { padding: var(--s-2); gap: var(--s-3); }
+  main {
+    padding: var(--s-2) var(--s-2) max(var(--s-6), env(safe-area-inset-bottom, 0px));
+    gap: var(--s-3);
+  }
   .card { padding: var(--s-3) var(--s-4); }
-  .moves-list { padding: var(--s-3) var(--s-4); }
+  .moves-list { padding: var(--s-3); }
 
+  /* 16px evita zoom automático do iOS ao focar inputs */
   textarea, input[type="text"], select { font-size: 16px; }
 }
 

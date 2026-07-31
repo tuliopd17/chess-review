@@ -1427,9 +1427,10 @@ button.secondary:hover {
 /* ---------- Desktop: 3 colunas, board hero, laterais sticky ---------- */
 @media (min-width: 1101px) {
   :root {
-    /* Chrome vertical enxuto: header + controles; engine compacta embaixo */
-    --panel-max: clamp(460px, calc(100vh - 156px), 1000px);
-    --panel-max: clamp(460px, calc(100dvh - 156px), 1000px);
+    /* Chrome vertical enxuto: header + controles; engine compacta embaixo.
+       ~10% menor que o clamp anterior (board hero um pouco menos dominante). */
+    --panel-max: clamp(414px, calc((100vh - 156px) * 0.9), 900px);
+    --panel-max: clamp(414px, calc((100dvh - 156px) * 0.9), 900px);
   }
 
   main {

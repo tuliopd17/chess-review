@@ -1472,10 +1472,11 @@ button.secondary:hover {
     flex: 0 1 auto;
   }
 
-  #summary-card { order: 1; }
-  #coach-card   { order: 2; }
-  #opening-card { order: 3; }
-  #import-card  { order: 4; }
+  /* Import sempre no topo da coluna esquerda; relatório abaixo */
+  #import-card  { order: 1; }
+  #summary-card { order: 2; }
+  #coach-card   { order: 3; }
+  #opening-card { order: 4; }
 
   .board-section {
     gap: var(--s-5);

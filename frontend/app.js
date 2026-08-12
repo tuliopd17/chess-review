@@ -390,9 +390,10 @@ function initTabs() {
 // ============================================================
 // Shell mobile (≤767px — celular)
 // ------------------------------------------------------------
-// Coluna única sequencial: tabuleiro sticky no topo, resto rolando
-// embaixo (import / lances / resumo / engine). Sem abas nem bottom sheet.
-// Tablet (768–1100) usa 2 colunas; desktop usa 3. Breakpoint = style.css.
+// Coluna única sequencial com um único scroll de página: board → lance →
+// lances → resumo → coach → engine → import. Sem abas, bottom sheet nem
+// tabuleiro fixo/sticky. Tablet (768–1100) usa 2 colunas; desktop usa 3.
+// Breakpoint = style.css.
 // ============================================================
 const MOBILE_SHELL_MQ = "(max-width: 767px)";
 
@@ -421,7 +422,7 @@ function initMobileShell() {
 /**
  * No mobile: traz o tabuleiro de volta à vista (scroll). Usado ao clicar em
  * lance / ponto crítico / gráfico — o usuário está mais abaixo na página.
- * No desktop é no-op (colunas sticky já mantêm o board).
+ * No desktop é no-op.
  */
 function showMobileBoard(opts = {}) {
   if (!isMobileShell()) return;
@@ -429,9 +430,10 @@ function showMobileBoard(opts = {}) {
   if (!stack) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const behavior = opts.scroll === false || reduce ? "auto" : "smooth";
-  // Se o sticky já colou no topo, não mexe — evita shake no iOS.
   const top = stack.getBoundingClientRect().top;
-  if (top > 2 || top < -2) {
+  const bottom = stack.getBoundingClientRect().bottom;
+  // Só rola se o tabuleiro estiver fora da viewport (parcial ou total).
+  if (top < 0 || bottom > window.innerHeight) {
     stack.scrollIntoView({ behavior, block: "start" });
   }
   // Zera drift horizontal residual do iOS.
@@ -441,40 +443,14 @@ function showMobileBoard(opts = {}) {
 }
 
 /**
- * Mobile + tabuleiro sticky: estabiliza a viewport ao trocar de lance.
- *
- * Histórico: a cada ◀/▶ a gente fazia scrollTo pra "acompanhar" o lance na
- * lista. No iOS/Android, scroll na página com position:sticky recompõe o
- * layer do board-stack e o tabuleiro treme (e o ResizeObserver do
- * cm-chessboard redesenha se a largura variar 1px por causa da scrollbar).
- *
- * Política (prioriza estabilidade do tabuleiro):
- *  1) Só pinna o sticky se o header ainda estiver cobrindo o topo.
- *  2) Com o sticky já colado, NÃO mexe em scrollY.
- *  3) Corrige scrollX residual (overflow horizontal do iOS) sem mexer no Y.
+ * Ao trocar de lance no mobile: não força scroll da página (layout sequencial
+ * sem sticky). Só corrige drift horizontal residual do iOS.
  */
 function followActiveMoveOnPage(_cell) {
   if (!isMobileShell()) return;
-
-  const stack = document.getElementById("board-stack");
-  if (!stack) return;
-
-  const y = window.scrollY || 0;
   const x = window.scrollX || 0;
-  const top = stack.getBoundingClientRect().top;
-
-  // Sticky ainda não colou (header visível): um único pin, sem micro-ajustes.
-  if (top > 2) {
-    const alvo = Math.max(0, Math.round(y + top));
-    if (Math.abs(alvo - y) > 2 || Math.abs(x) > 0) {
-      window.scrollTo({ top: alvo, left: 0, behavior: "auto" });
-    }
-    return;
-  }
-
-  // Já colado: só zera drift horizontal. Qualquer scrollY aqui = shake.
   if (Math.abs(x) > 0) {
-    window.scrollTo({ top: y, left: 0, behavior: "auto" });
+    window.scrollTo({ top: window.scrollY || 0, left: 0, behavior: "auto" });
   }
 }
 
@@ -1358,7 +1334,7 @@ function renderPlayerBars() {
     const chip = r ? `<span class="player-result ${r.cls}">${r.label}</span>` : "";
     const isTurn = turnColor === p.color && moves.length > 0 && state.currentPly < moves.length;
     // Sempre reserva o slot do turn-dot: sumir/aparecer a cada lance mudava
-    // a largura da barra e contribuía pro "shake" do sticky no mobile.
+    // a largura da barra e saltava o layout no mobile.
     const turnDot = `<span class="player-turn-dot${isTurn ? "" : " is-idle"}" title="Vez de jogar" ${isTurn ? "" : 'aria-hidden="true"'}></span>`;
     return `<span class="player-disc ${p.color}"></span>
             <span class="player-name">${escapeHtml(p.name)}</span>
@@ -1796,7 +1772,7 @@ function goToPly(ply) {
     active = document.querySelector(`.move-cell[data-ply="${ply}"]`);
     if (active) {
       active.classList.add("active");
-      // Desktop/tablet: lista tem scroll próprio. No mobile a lista flui na
+      // Desktop: lista tem scroll próprio (82vh). Mobile/tablet: lista flui na
       // página (max-height:none) — este bloco vira no-op se não houver overflow.
       const list = document.querySelector(".moves-list");
       if (list && list.scrollHeight > list.clientHeight + 1) {
@@ -1815,8 +1791,7 @@ function goToPly(ply) {
   renderPlayerBars();
   renderBoardOverlays();
 
-  // Mobile: no máximo pinna o sticky uma vez. Não rola a página a cada lance
-  // (isso fazia o board tremer).
+  // Mobile: só corrige drift horizontal; não força scroll da página.
   if (isMobileShell()) {
     requestAnimationFrame(() => followActiveMoveOnPage(active));
   }

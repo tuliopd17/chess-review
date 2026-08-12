@@ -55,8 +55,6 @@
   --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.35);
   --radius: 10px;
   --radius-sm: 6px;
-  --sticky-top: var(--s-4);
-  --col-max-h: calc(100dvh - var(--s-6));
 }
 
 * {
@@ -69,10 +67,7 @@ html {
   width: 100%;
   overscroll-behavior-x: none;
   overscroll-behavior-y: contain;
-  /* `clip` e não só `hidden`: overflow-x:hidden faz do elemento um contêiner
-     de rolagem e o position:sticky dos filhos ancora NELE (não na viewport).
-     No Safari iOS o tabuleiro deixa de grudar no topo. `clip` recorta igual
-     sem criar contêiner de rolagem. `hidden` fica como fallback. */
+  /* clip evita barra horizontal sem criar contêiner de rolagem extra */
   overflow-x: hidden;
   overflow-x: clip;
   /* Evita a página "saltar" 1px de largura quando a scrollbar vertical
@@ -671,7 +666,11 @@ button.danger:hover {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  /* visible: badge de classificação nos cantos (a8/h8/…) precisa “sair”
+     um pouco do tabuleiro pra ficar inteiro, como no chess.com.
+     O recorte arredondado fica no .cm-chessboard (clip-path), não aqui.
+     ScrollX da página continua travado em html/body (overflow-x: clip). */
+  overflow: visible;
 }
 
 .cm-chessboard {
@@ -729,7 +728,9 @@ button.danger:hover {
   inset: 0;
   pointer-events: none;
   z-index: 10;
-  overflow: hidden; /* badge no canto (h8/a8) não vaza e não empurra o scrollX */
+  /* visible: badge no canto superior-direito da casa precisa vazar ~1–2%
+     fora do tabuleiro nos cantos (h8/a8/h1/a1) — overflow:hidden cortava. */
+  overflow: visible;
 }
 
 .cls-badge {
@@ -1422,9 +1423,12 @@ button.secondary:hover {
 /* ============================================================
    Media Queries
    Desktop ≥1101 | Tablet 768–1100 | Mobile ≤767 | Small ≤600
+   Layout: página rola inteira (sem scroll interno nas laterais,
+   sem tabuleiro fixo/sticky). Único scroll interno residual: lista
+   de lances no desktop (max-height no estilo base).
    ============================================================ */
 
-/* ---------- Desktop: 3 colunas, board hero, laterais sticky ---------- */
+/* ---------- Desktop: 3 colunas, board hero, página rola ---------- */
 @media (min-width: 1101px) {
   :root {
     /* Chrome vertical enxuto: header + controles; engine compacta embaixo.
@@ -1443,16 +1447,9 @@ button.secondary:hover {
     align-items: start;
   }
 
-  /* Colunas laterais com a mesma “caixa” de altura e scroll interno */
+  /* Laterais no fluxo da página — sem sticky e sem scrollbar próprio */
   .sidebar {
-    position: sticky;
-    top: var(--sticky-top);
-    align-self: start;
-    max-height: var(--col-max-h);
-    overflow-y: auto;
-    overflow-x: hidden;
     gap: var(--s-4);
-    padding-right: 2px;
   }
 
   .review-col {
@@ -1460,11 +1457,6 @@ button.secondary:hover {
     flex-direction: column;
     gap: var(--s-4);
     min-width: 0;
-    position: sticky;
-    top: var(--sticky-top);
-    align-self: start;
-    max-height: var(--col-max-h);
-    overflow: hidden;
   }
 
   .review-col #move-info {
@@ -1475,11 +1467,9 @@ button.secondary:hover {
 
   .review-col #move-classification { justify-content: flex-start; }
 
+  /* Lista de lances: único scroll interno do desktop (estilo base 82vh) */
   .review-col .moves-list {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
-    overflow-y: auto;
+    flex: 0 1 auto;
   }
 
   #summary-card { order: 1; }
@@ -1505,7 +1495,7 @@ button.secondary:hover {
   }
 }
 
-/* ---------- Tablet: 2 colunas (board | painéis), sem abas mobile ---------- */
+/* ---------- Tablet: 2 colunas no fluxo da página ---------- */
 @media (min-width: 768px) and (max-width: 1100px) {
   :root {
     --panel-max: min(100%, calc(100svh - 200px), 640px);
@@ -1529,14 +1519,7 @@ button.secondary:hover {
   .board-section {
     grid-column: 1;
     grid-row: 1;
-    position: sticky;
-    top: var(--s-3);
-    align-self: start;
     gap: var(--s-4);
-    max-height: calc(100dvh - var(--s-5));
-    overflow-y: auto;
-    overflow-x: hidden;
-    z-index: 5;
   }
 
   .board-stack {
@@ -1546,7 +1529,7 @@ button.secondary:hover {
   /* Coluna direita: fluxo natural (import → lances → resumo…) */
   #import-card      { grid-column: 2; }
   #move-info        { grid-column: 2; }
-  .moves-list       { grid-column: 2; max-height: min(48vh, 420px); }
+  .moves-list       { grid-column: 2; max-height: none; overflow: visible; }
   #summary-card     { grid-column: 2; }
   #coach-card       { grid-column: 2; }
   #opening-card     { grid-column: 2; }
@@ -1570,17 +1553,14 @@ button.secondary:hover {
   }
 }
 
-/* ---------- Mobile: coluna única sequencial (sem abas) ----------
-   Tabuleiro sticky no topo; o resto rola em ordem de leitura natural.
+/* ---------- Mobile: coluna única sequencial (um scroll, sem sticky) ----------
    Com partida: board → lance → lances → resumo → coach → abertura → engine → import.
-   Sem partida: board → import (CTA) → lances (vazio) → engine. */
+   Sem partida: board → import (CTA) → engine. */
 @media (max-width: 767px) {
   :root {
     /* 100% (não 100vw): evita overflow horizontal alternado no iOS Safari */
     --panel-max: min(100%, 560px);
-    /* Cap de 400px: sobra espaço pra o card do lance “vazar” sob o sticky
-       e convidar o scroll sequencial (review legível sem abas). */
-    --m-board-max: min(100%, calc(100svh - 240px), 400px);
+    --m-board-max: min(100%, 560px);
   }
 
   main {
@@ -1640,22 +1620,18 @@ button.secondary:hover {
     margin-inline: auto;
   }
 
-  /* Tabuleiro sticky: hero sempre à vista enquanto se rola a análise.
-     Sem transform/will-change — no iOS isso tremia o SVG do board. */
+  /* Tabuleiro no fluxo normal da página (sem sticky/fixo) */
   .board-stack {
-    position: sticky;
-    top: 0;
-    z-index: 30;
+    position: static;
     gap: var(--s-1);
     width: 100%;
     max-width: 100%;
     margin: 0;
     padding: var(--s-1) 0 var(--s-2);
-    background: var(--bg);
-    box-shadow: 0 10px 18px -10px rgba(0, 0, 0, 0.9);
+    background: transparent;
+    box-shadow: none;
     box-sizing: border-box;
-    overflow: hidden;
-    touch-action: pan-y;
+    overflow: visible;
   }
 
   .board-wrap {
@@ -1665,19 +1641,21 @@ button.secondary:hover {
     flex-shrink: 0;
     gap: 5px;
     margin: 0 auto;
-    /* Largura estável: ResizeObserver do cm-chessboard redesenha o SVG se
-       clientWidth mudar 1px (scrollbar / sticky recompose). */
-    contain: layout;
   }
 
   .board-container {
     border-radius: 6px;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: visible;
     touch-action: manipulation;
   }
 
-  #board,
+  #board {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+  }
+
   .cm-chessboard {
     width: 100%;
     height: 100%;

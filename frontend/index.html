@@ -347,10 +347,13 @@
   <div id="toast-root" class="toast-root" aria-live="polite" aria-relevant="additions"></div>
 
   <!-- defer: baixam em paralelo durante o parse, executam em ordem de documento
-       depois do parse (sem bloquear o primeiro paint). app.js vem ANTES do módulo
-       board_init pra registrar o listener de "crBoardReady" antes do dispatch. -->
+       depois do parse (sem bloquear o primeiro paint). chess.js PRECISA vir
+       antes de analysis.js e app.js (modo exploração + PV em SAN + brilhantes).
+       app.js vem ANTES do módulo board_init pra registrar o listener de
+       "crBoardReady" antes do dispatch. -->
   <script defer src="/static/icons.js"></script>
   <script defer src="/static/engine_wasm.js"></script>
+  <script defer src="/static/vendor/chess-0.10.3.min.js"></script>
   <script defer src="/static/analysis.js"></script>
   <script defer src="/static/app.js"></script>
   <!-- cm-chessboard é ES module (deferred por natureza) — monta o tabuleiro e

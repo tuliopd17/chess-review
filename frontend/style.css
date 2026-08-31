@@ -1157,6 +1157,7 @@ footer a:hover { text-decoration: underline; }
 .explore-banner {
   width: 100%;
   max-width: var(--panel-max);
+  margin-top: var(--s-4);
   padding: 10px 14px;
   background: linear-gradient(90deg, #1baca6 0%, #5c8bb0 100%);
   color: #ffffff;

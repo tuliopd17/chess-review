@@ -394,12 +394,31 @@ button.danger:hover {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--s-2);
-  color: var(--text-muted);
+  color: var(--text);
   font-size: 0.82rem;
-  margin-bottom: var(--s-3);
+  margin-bottom: var(--s-2);
 }
 
-.review-setting select { width: auto; min-height: 44px; }
+.review-setting select {
+  width: auto;
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  font-size: 1rem;
+  color-scheme: dark;
+}
+
+.review-setting select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.review-setting-hint {
+  margin: 0 0 var(--s-3);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
 .cancel-analysis { margin-bottom: var(--s-3); width: 100%; }
 .cancel-analysis[hidden] { display: none; }
 
@@ -455,6 +474,7 @@ button.danger:hover {
 
 .game-item {
   display: block;
+  flex-shrink: 0;
   width: 100%;
   padding: var(--s-2) var(--s-3);
   background: var(--bg-elevated);
@@ -1367,13 +1387,17 @@ body[data-has-game] .live-engine-head {
   color: var(--text-muted);
 }
 
-.live-engine-controls select {
+.live-engine-controls select,
+.review-setting select {
   background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 4px var(--s-2);
   font-family: inherit;
+}
+
+.live-engine-controls select {
+  padding: 4px var(--s-2);
   min-height: 36px;
 }
 

@@ -115,14 +115,15 @@
           <button id="tab-button-history" class="tab-btn" data-tab="history" role="tab" aria-selected="false" aria-controls="tab-history">histórico</button>
         </div>
 
-        <label class="review-setting" for="review-depth-sel">Análise da partida
-          <select id="review-depth-sel" aria-label="Profundidade da análise da partida">
-            <option value="12">12 (rápida)</option>
-            <option value="14">14</option>
-            <option value="15" selected>15 (padrão)</option>
-            <option value="16">16 (mais lenta)</option>
+        <label class="review-setting" for="review-depth-sel">Força da engine
+          <select id="review-depth-sel" aria-describedby="review-setting-hint">
+            <option value="12">12 · Rápida</option>
+            <option value="14">14 · Equilibrada</option>
+            <option value="15" selected>15 · Padrão</option>
+            <option value="16">16 · Mais forte</option>
           </select>
         </label>
+        <p id="review-setting-hint" class="review-setting-hint">Quanto maior a profundidade, mais forte e mais lenta a análise.</p>
 
         <div class="tab-panel" id="tab-pgn">
           <textarea id="pgn-input" aria-label="PGN da partida" placeholder="Cole aqui o PGN da partida..."></textarea>

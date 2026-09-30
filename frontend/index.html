@@ -108,15 +108,24 @@
       <section class="card" id="import-card">
         <h2>Importar partida</h2>
 
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="chesscom">chess.com</button>
-          <button class="tab-btn" data-tab="lichess">lichess</button>
-          <button class="tab-btn" data-tab="pgn">PGN</button>
-          <button class="tab-btn" data-tab="history">histórico</button>
+        <div class="tabs" role="tablist" aria-label="Origem da partida">
+          <button id="tab-button-chesscom" class="tab-btn active" data-tab="chesscom" role="tab" aria-selected="true" aria-controls="tab-chesscom">chess.com</button>
+          <button id="tab-button-lichess" class="tab-btn" data-tab="lichess" role="tab" aria-selected="false" aria-controls="tab-lichess">lichess</button>
+          <button id="tab-button-pgn" class="tab-btn" data-tab="pgn" role="tab" aria-selected="false" aria-controls="tab-pgn">PGN</button>
+          <button id="tab-button-history" class="tab-btn" data-tab="history" role="tab" aria-selected="false" aria-controls="tab-history">histórico</button>
         </div>
 
+        <label class="review-setting" for="review-depth-sel">Análise da partida
+          <select id="review-depth-sel" aria-label="Profundidade da análise da partida">
+            <option value="12">12 (rápida)</option>
+            <option value="14">14</option>
+            <option value="15" selected>15 (padrão)</option>
+            <option value="16">16 (mais lenta)</option>
+          </select>
+        </label>
+
         <div class="tab-panel" id="tab-pgn">
-          <textarea id="pgn-input" placeholder="Cole aqui o PGN da partida..."></textarea>
+          <textarea id="pgn-input" aria-label="PGN da partida" placeholder="Cole aqui o PGN da partida..."></textarea>
           <div class="row">
             <label class="file-label">
               <input type="file" id="pgn-file" accept=".pgn,.txt" />
@@ -132,13 +141,13 @@
         </div>
 
         <div class="tab-panel active" id="tab-chesscom">
-          <input type="text" id="chesscom-user" placeholder="seu_usuario no chess.com" />
+          <input type="text" id="chesscom-user" aria-label="Usuário do chess.com" placeholder="seu_usuario no chess.com" autocomplete="off" autocapitalize="none" spellcheck="false" />
           <button id="fetch-chesscom-btn" class="mt-2">Buscar partidas</button>
           <div class="games-list" id="chesscom-games"></div>
         </div>
 
         <div class="tab-panel" id="tab-lichess">
-          <input type="text" id="lichess-user" placeholder="seu_usuario no lichess" />
+          <input type="text" id="lichess-user" aria-label="Usuário do lichess" placeholder="seu_usuario no lichess" autocomplete="off" autocapitalize="none" spellcheck="false" />
           <button id="fetch-lichess-btn" class="mt-2">Buscar partidas</button>
           <div class="games-list" id="lichess-games"></div>
         </div>
@@ -283,18 +292,10 @@
               <option value="0">infinita</option>
             </select>
           </label>
-          <label class="small">Review:
-            <select id="review-depth-sel" aria-label="Profundidade da análise da partida">
-              <option value="12">12 (rápida)</option>
-              <option value="14">14</option>
-              <option value="15" selected>15 (padrão)</option>
-              <option value="16">16 (mais lenta)</option>
-            </select>
-          </label>
         </div>
         <p class="engine-depth-hint muted">
-          <strong>Review</strong> classifica os lances da partida.
-          <strong>Ao vivo</strong> analisa a posição atual / variantes.
+          <strong>Ao vivo</strong> analisa a posição atual e variantes.
+          A profundidade da revisão fica em <strong>Importar partida</strong>.
         </p>
       </section>
     </section>
@@ -315,8 +316,9 @@
       <h2>Lances</h2>
       <div id="progress-bar" class="progress-bar" style="display:none;">
         <div class="progress-fill" id="progress-fill"></div>
-        <div class="progress-text" id="progress-text">0 / 0</div>
+        <div class="progress-text" id="progress-text" role="status" aria-live="polite">0 / 0</div>
       </div>
+      <button id="cancel-analysis-btn" type="button" class="secondary cancel-analysis" hidden>Interromper análise</button>
       <div id="moves-container">
         <!-- Estado vazio (construído com utilitários Tailwind + tokens chess.com).
              O app.js substitui este conteúdo pela lista de lances ao analisar. -->

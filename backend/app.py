@@ -10,18 +10,20 @@ O backend é responsável por:
 """
 from __future__ import annotations
 
-import os
+import asyncio
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
 import chess
 import chess.pgn
+import httpx
 from io import StringIO
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from . import importers
 from . import openings
@@ -46,23 +48,45 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 class VendorStaticFiles(StaticFiles):
-    """StaticFiles pras libs de terceiros self-hosted (chess.js, Highcharts,
-    cm-chessboard). São versionadas no caminho/conteúdo e não mudam entre deploys,
-    então cacheia agressivo (1 ano, immutable) — primeiro load baixa, os próximos
-    nem batem no servidor. Tira 3 origens de CDN do caminho crítico.
+    """Libs locais revalidáveis: várias URLs não contêm versão/hash.
+
+    ETag evita transferir novamente as libs inalteradas e permite atualizar
+    Highcharts/cm-chessboard sem prender usuários à versão anterior por um ano.
     """
 
     async def get_response(self, path, scope):
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
         return response
 
 
-app = FastAPI(title="Chess Review", version="0.5.0")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Parsing/IO não devem ocupar o event loop que atende os demais usuários.
+    await run_in_threadpool(_startup_warmup)
+    async with httpx.AsyncClient(
+        headers={"User-Agent": importers.USER_AGENT},
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+    ) as client:
+        app.state.import_client = client
+        app.state.import_jobs = {}
+        try:
+            yield
+        finally:
+            pending = list(app.state.import_jobs.values())
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            del app.state.import_client
+            del app.state.import_jobs
 
 
-@app.on_event("startup")
-async def _startup_warmup():
+app = FastAPI(title="Chess Review", version="0.6.0", lifespan=_lifespan)
+
+
+def _startup_warmup():
     # Remove caches de versões antigas (multi-thread SF11 etc).
     try:
         sf_assets.cleanup_old_files()
@@ -76,10 +100,45 @@ async def _startup_warmup():
         print(f"[startup] openings.load falhou: {e}")
 
 
+MAX_PGN_CHARS = 2_000_000
+MAX_PGN_GAMES = 501
+MAX_GAME_PLIES = 2_000
+
+
 class PGNRequest(BaseModel):
-    pgn: str
+    pgn: str = Field(max_length=MAX_PGN_CHARS)
     # Índice da partida quando o PGN tem várias (0 = primeira).
     game_index: int = Field(default=0, ge=0, le=500)
+
+
+class _MainlineBuilder(chess.pgn.GameBuilder):
+    """Ignora variantes/comentários; a API analisa somente a linha principal."""
+
+    def begin_game(self):
+        super().begin_game()
+        self.plies = 0
+
+    def begin_variation(self):
+        return chess.pgn.SKIP
+
+    def end_variation(self):
+        pass
+
+    def visit_comment(self, comment):
+        pass
+
+    def visit_move(self, board, move):
+        if board.is_variant_end() or not move:
+            raise ValueError("Lances nulos não são suportados na análise")
+        if self.plies >= MAX_GAME_PLIES:
+            raise ValueError(f"Partida excede o limite de {MAX_GAME_PLIES} lances")
+        self.plies += 1
+        super().visit_move(board, move)
+
+    def handle_error(self, error):
+        # python-chess normalmente devolve uma partida truncada com game.errors.
+        # Interromper aqui evita analisar um PGN parcialmente inválido.
+        raise error
 
 
 def _read_all_games(pgn_text: str) -> list:
@@ -88,11 +147,20 @@ def _read_all_games(pgn_text: str) -> list:
     sio = StringIO(pgn_text)
     while True:
         try:
-            game = chess.pgn.read_game(sio)
+            game = chess.pgn.read_game(sio, Visitor=_MainlineBuilder)
         except Exception as e:
             raise HTTPException(400, f"PGN inválido: {e}")
         if game is None:
             break
+        if len(games) >= MAX_PGN_GAMES:
+            raise HTTPException(400, f"PGN excede o limite de {MAX_PGN_GAMES} partidas")
+        board = game.board()
+        if type(board) is not chess.Board or board.chess960:
+            raise HTTPException(400, "Somente partidas de xadrez padrão são suportadas")
+        if not board.is_valid():
+            raise HTTPException(400, "PGN contém uma posição inicial inválida")
+        if not any(game.mainline_moves()):
+            raise HTTPException(400, "PGN não contém lances válidos")
         games.append(game)
     return games
 
@@ -116,11 +184,13 @@ def _parse_game(game) -> dict:
     """Extrai headers, moves (com FENs) e abertura de um game python-chess."""
     headers = dict(game.headers)
     board = game.board()
+    initial_fen = board.fen()
     moves_data = []
     uci_list = []
 
-    for ply, mv in enumerate(list(game.mainline_moves()), start=1):
+    for ply, mv in enumerate(game.mainline_moves(), start=1):
         mover = board.turn
+        move_number = board.fullmove_number
         fen_before = board.fen()
         san = board.san(mv)
         uci = mv.uci()
@@ -145,7 +215,7 @@ def _parse_game(game) -> dict:
         uci_list.append(uci)
         moves_data.append({
             "ply": ply,
-            "move_number": (ply + 1) // 2,
+            "move_number": move_number,
             "color": "white" if mover == chess.WHITE else "black",
             "san": san,
             "uci": uci,
@@ -159,7 +229,11 @@ def _parse_game(game) -> dict:
             "captured_piece": captured_piece,
         })
 
-    op = openings.detect_opening_for_game(uci_list)
+    # Uma posição montada via FEN não começa na posição usada pela base ECO.
+    if initial_fen == chess.STARTING_FEN:
+        op = openings.detect_opening_for_game(uci_list)
+    else:
+        op = {"eco": None, "name": None, "last_book_ply": 0, "in_book": []}
     for i, m in enumerate(moves_data):
         m["in_book"] = op["in_book"][i] if i < len(op["in_book"]) else False
 
@@ -179,9 +253,9 @@ def _parse_game(game) -> dict:
 # ===========================================================================
 
 @app.get("/api/health")
-async def health():
+def health():
     """Versão simplificada — só reporta status dos assets do WASM e openings."""
-    sf_filename = sf_assets.best_available()
+    sf_filename = sf_assets.best_available(download=False)
     return {
         "ok": True,
         "stockfish_wasm_ready": sf_filename is not None,
@@ -192,7 +266,7 @@ async def health():
 
 
 @app.get("/sf/{filename}")
-async def sf_asset(filename: str):
+def sf_asset(filename: str):
     """Serve os arquivos do Stockfish WASM (baixados na primeira execução).
 
     IMPORTANTE: o Content-Type pro .wasm precisa ser exatamente
@@ -229,7 +303,7 @@ async def sf_asset(filename: str):
 # ===========================================================================
 
 @app.post("/api/pgn/parse")
-async def parse_pgn_route(req: PGNRequest):
+def parse_pgn_route(req: PGNRequest):
     """
     Lê um PGN e devolve:
       - headers (dict)
@@ -270,8 +344,10 @@ async def parse_pgn_route(req: PGNRequest):
 # Imports
 # ===========================================================================
 
-@app.get("/api/chesscom/{username}")
-async def chesscom_games(username: str, request: Request, limit: int = 20):
+async def _import_games(source: str, username: str, request: Request, limit: int):
+    username = username.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_-]{1,64}", username):
+        raise HTTPException(400, "Nome de usuário inválido")
     try:
         rate_limit.check_rate_limit(rate_limit.client_key(request))
     except rate_limit.RateLimitExceeded as e:
@@ -282,48 +358,62 @@ async def chesscom_games(username: str, request: Request, limit: int = 20):
         )
 
     limit = max(1, min(int(limit or 20), 50))
-    cache_key = f"chesscom:{username.strip().lower()}:{limit}"
+    cache_key = f"{source}:{username}:{limit}"
     cached = rate_limit.cache_get(cache_key)
     if cached is not None:
         return {**cached, "cached": True}
 
-    try:
-        games = await importers.fetch_chesscom_recent(username, limit=limit)
+    async def fetch():
+        fetcher = importers.fetch_chesscom_recent if source == "chesscom" else importers.fetch_lichess_recent
+        games = await fetcher(username, limit=limit, client=getattr(request.app.state, "import_client", None))
         payload = {"games": games}
         rate_limit.cache_set(cache_key, payload)
-        return {**payload, "cached": False}
-    except ValueError as e:
+        return payload
+
+    try:
+        # Pedidos simultâneos do mesmo usuário compartilham uma chamada externa.
+        jobs = getattr(request.app.state, "import_jobs", None)
+        shared = jobs is not None and cache_key in jobs
+        if jobs is None:
+            payload = await fetch()
+        else:
+            if not shared:
+                task = asyncio.create_task(fetch())
+                jobs[cache_key] = task
+
+                def completed(done):
+                    jobs.pop(cache_key, None)
+                    # Consome a exceção se o cliente fechar antes do término.
+                    if not done.cancelled():
+                        done.exception()
+
+                task.add_done_callback(completed)
+            payload = await asyncio.shield(jobs[cache_key])
+        return {**payload, "cached": shared}
+    except importers.UserNotFound as e:
         raise HTTPException(404, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(502, "O servidor de partidas retornou uma resposta inválida. Tente novamente.")
+    except httpx.TimeoutException:
+        raise HTTPException(504, "O servidor de partidas demorou para responder. Tente novamente.")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429:
+            retry = e.response.headers.get("Retry-After", "60")
+            raise HTTPException(503, "O servidor de partidas está ocupado. Tente novamente em instantes.",
+                                headers={"Retry-After": retry if retry.isdigit() else "60"})
+        raise HTTPException(502, "O servidor de partidas está indisponível. Tente novamente.")
+    except httpx.RequestError:
+        raise HTTPException(502, "Não foi possível conectar ao servidor de partidas. Tente novamente.")
+
+
+@app.get("/api/chesscom/{username}")
+async def chesscom_games(username: str, request: Request, limit: int = 20):
+    return await _import_games("chesscom", username, request, limit)
 
 
 @app.get("/api/lichess/{username}")
 async def lichess_games(username: str, request: Request, limit: int = 20):
-    try:
-        rate_limit.check_rate_limit(rate_limit.client_key(request))
-    except rate_limit.RateLimitExceeded as e:
-        raise HTTPException(
-            status_code=429,
-            detail=str(e),
-            headers={"Retry-After": str(e.retry_after)},
-        )
-
-    limit = max(1, min(int(limit or 20), 50))
-    cache_key = f"lichess:{username.strip().lower()}:{limit}"
-    cached = rate_limit.cache_get(cache_key)
-    if cached is not None:
-        return {**cached, "cached": True}
-
-    try:
-        games = await importers.fetch_lichess_recent(username, limit=limit)
-        payload = {"games": games}
-        rate_limit.cache_set(cache_key, payload)
-        return {**payload, "cached": False}
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    return await _import_games("lichess", username, request, limit)
 
 
 # ===========================================================================
@@ -350,19 +440,16 @@ def _assets_version() -> str:
 VENDOR_DIR = FRONTEND_DIR / "vendor"
 
 if FRONTEND_DIR.exists():
-    # IMPORTANTE: monta /static/vendor ANTES de /static (Starlette casa mounts na
-    # ordem). Assim as libs self-hosted ganham cache immutable de 1 ano, enquanto
-    # o resto do frontend (nosso código, que muda) fica no no-cache.
+    # Monta /static/vendor antes de /static (Starlette usa a ordem de mounts).
     if VENDOR_DIR.exists():
         app.mount("/static/vendor", VendorStaticFiles(directory=str(VENDOR_DIR)), name="vendor")
     app.mount("/static", NoCacheStaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
     @app.get("/")
-    async def index():
+    def index():
         html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
         # Acrescenta ?v=<versão> em qualquer href/src que aponte pra /static/
-        # (cache-bust dos assets locais; não toca em libs em /static/vendor/, que
-        # são immutable, nem em URLs externas).
+        # (cache-bust dos assets locais; libs vendor usam ETag para revalidar).
         v = _assets_version()
         html = re.sub(
             r'(/static/(?!vendor/)[^"\']+?\.(?:js|css))', rf"\1?v={v}", html
@@ -375,7 +462,7 @@ if FRONTEND_DIR.exists():
         # destino real é "worker"/fetch do Emscripten, e um preload com `as`/CORS
         # divergente causaria download duplicado dos ~10MB. O ganho de latência
         # vem da injeção + cache immutable; preload só depois de medir.)
-        sf_filename = sf_assets.best_available()
+        sf_filename = sf_assets.best_available(download=False)
         if sf_filename:
             sf_js_url = f"/sf/{sf_filename}"
             inject = f'<script>window.__CR_ENGINE_URL__={sf_js_url!r};</script>\n'

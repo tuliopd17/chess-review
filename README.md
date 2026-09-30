@@ -21,7 +21,7 @@ A análise roda **100% no navegador via Stockfish WASM** — você não precisa 
 - **Análise incremental**: lances aparecem classificados conforme o WASM termina cada posição.
 - **11 classificações** estilo chess.com com ícones próprios: Brilliant, Great, Best, Excellent, Good, Book, Forced, Inaccuracy, Mistake, Blunder, Miss.
 - **Detecção de aberturas via base do Lichess** (download automático na primeira execução).
-- **Acurácia 0–100** por jogador (mesma fórmula do chess.com).
+- **Acurácia 0–100** por jogador com a fórmula aberta do Lichess.
 - **Estimativa de ELO** baseada na acurácia.
 - **Eval bar vertical** dinâmico ao lado do tabuleiro (mostra mate como M1, M2…).
 - **Tabuleiro com overlays**:
@@ -30,7 +30,10 @@ A análise roda **100% no navegador via Stockfish WASM** — você não precisa 
   - Setas: verde no melhor lance + vermelha no lance jogado, quando foi imprecisão/erro/capivarada.
 - **Painel de engine ao vivo**: top 3 linhas (MultiPV), profundidade, nodes/sec — estilo Lichess.
 - **Coach card**: pontos-chave da partida em português + lances críticos clicáveis.
-- **Histórico local**: análises ficam salvas no localStorage por hash do PGN.
+- **Histórico local**: até 30 análises no IndexedDB, com fallback para localStorage. Reabrir uma partida reutiliza a análise da profundidade escolhida.
+- **Controle de recursos**: pool adaptado aos núcleos e à memória do dispositivo, engine ao vivo pausada em abas ocultas e botão para interromper a revisão.
+- **PGN com posição personalizada**: respeita FEN, lado a jogar, número do lance e escolha da peça de promoção.
+- **Exportação e compartilhamento**: PGN anotado e link que preserva a partida selecionada em arquivos com várias partidas.
 - **Navegação por teclado**: ◀/▶, Home/End, F pra girar tabuleiro.
 
 ## Pré-requisitos
@@ -134,7 +137,7 @@ chess-review/
 │   ├── analysis.js       # Lógica completa de análise da partida (no browser)
 │   ├── app.js            # UI principal (importação, navegação, exploração, histórico)
 │   └── vendor/           # Libs de terceiros self-hosted (cm-chessboard, chess.js,
-│                         #   Highcharts) — servidas same-origin, cache immutable
+│                         #   Highcharts) — servidas same-origin, cache com ETag
 ├── examples/
 │   └── kasparov-deep-blue-1997.pgn
 ├── package.json          # Tooling do build de CSS (Tailwind) — o app é Python
@@ -216,10 +219,31 @@ Os **comentários** de cada lance não apenas rotulam — explicam a consequênc
 
 **WDL**: o engine roda com `UCI_ShowWDL` e cada posição carrega probabilidades Win/Draw/Loss do modelo interno do Stockfish (dependente de eval + material); há um port JS exato do `win_rate_model` do SF 18 como fallback.
 
+## Validação e revisão do histórico
+
+O diagnóstico das 83 revisões anteriores e as escolhas desta versão estão em
+[docs/PRIME_REVIEW.md](docs/PRIME_REVIEW.md). A base combina a classificação
+rating-aware e a confirmação de lances críticos com o layout sequencial mais
+recente, recuperando os recursos de interface que haviam se perdido.
+
+```bash
+npm ci
+npm test
+npm run build:css
+python -m pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+```
+
+O CI testa classificação, ciclo de vida dos Workers, estado da interface e API,
+e confere se o CSS gerado está commitado. O backend compartilha conexões HTTP
+e consultas de importação simultâneas; parsing de PGN e downloads de assets
+rodam fora do event loop. Arquivos PGN aceitam até 2 milhões de caracteres,
+501 partidas e 2.000 meios-lances por partida. Variantes não suportadas e
+lances ilegais retornam erro, em vez de produzir uma revisão incompleta.
+
 ## Roadmap
 
 - Suporte a análise em lote (várias partidas)
-- Export do PGN com comentários do engine (`{[%eval ...]}` + classificações)
 - Tradução para outras línguas
 - Modo "Coach guiado" passo-a-passo
 - Tema claro/escuro

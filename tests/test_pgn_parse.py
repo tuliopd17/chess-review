@@ -1,11 +1,12 @@
-"""Rota /api/pgn/parse via TestClient (offline).
+"""Rota /api/pgn/parse via TestClient, sem rede."""
+import asyncio
+import threading
 
-Não usamos `with TestClient(...)` de propósito: o context manager dispara os
-eventos de startup (warmup que baixaria assets do Stockfish). Instanciar direto
-mantém o teste offline — só exercitamos a rota de parse.
-"""
+import httpx
+import pytest
 from fastapi.testclient import TestClient
 
+from backend import app as app_module
 from backend.app import app
 
 client = TestClient(app)
@@ -92,3 +93,72 @@ def test_parse_multi_game_selects_index():
 def test_parse_multi_game_index_out_of_range():
     r = client.post("/api/pgn/parse", json={"pgn": MULTI_PGN, "game_index": 5})
     assert r.status_code == 400
+
+
+@pytest.mark.parametrize("pgn", [
+    "hello world",
+    "1. e4 e5 2. Bh6 *",  # SAN ilegal: não pode devolver só os 2 primeiros lances.
+    "1. e4 -- *",  # Stockfish/chess.js não analisam lances nulos do PGN.
+    '[Variant "Atomic"]\n\n1. e4 e5 *',
+    '[SetUp "1"]\n[FEN "8/8/8/8/8/8/8/7K w - - 0 1"]\n\n1. Kh2 *',
+])
+def test_invalid_or_unsupported_pgn_is_rejected(pgn):
+    response = client.post("/api/pgn/parse", json={"pgn": pgn})
+    assert response.status_code == 400
+
+
+def test_pgn_variations_do_not_replace_mainline():
+    response = client.post("/api/pgn/parse", json={
+        "pgn": "1. e4 {Comentário} (1. d4 d5 (1... Nf6)) e5 2. Nf3 *",
+    })
+    assert response.status_code == 200
+    assert [move["san"] for move in response.json()["moves"]] == ["e4", "e5", "Nf3"]
+
+
+def test_fen_with_black_to_move_preserves_move_number_and_has_no_false_opening():
+    response = client.post("/api/pgn/parse", json={
+        "pgn": '[SetUp "1"]\n[FEN "8/8/8/8/8/8/4k3/7K b - - 0 42"]\n\n42... Kf3 43. Kh2 *',
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert [(move["move_number"], move["color"]) for move in data["moves"]] == [(42, "black"), (43, "white")]
+    assert data["opening"]["name"] is None
+    assert all(not move["in_book"] for move in data["moves"])
+
+
+def test_pgn_size_is_bounded(monkeypatch):
+    response = client.post("/api/pgn/parse", json={"pgn": " " * (app_module.MAX_PGN_CHARS + 1)})
+    assert response.status_code == 422
+
+
+def test_pgn_game_and_move_counts_are_bounded(monkeypatch):
+    monkeypatch.setattr(app_module, "MAX_PGN_GAMES", 1)
+    assert client.post("/api/pgn/parse", json={"pgn": MULTI_PGN}).status_code == 400
+    monkeypatch.setattr(app_module, "MAX_GAME_PLIES", 2)
+    assert client.post("/api/pgn/parse", json={"pgn": SCHOLARS_MATE}).status_code == 400
+
+
+def test_slow_parse_does_not_block_health(monkeypatch):
+    started = threading.Event()
+    release = threading.Event()
+    original_read = app_module._read_all_games
+
+    def slow_read(text):
+        started.set()
+        assert release.wait(5)
+        return original_read(text)
+
+    monkeypatch.setattr(app_module, "_read_all_games", slow_read)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as http:
+            parsing = asyncio.create_task(http.post("/api/pgn/parse", json={"pgn": SCHOLARS_MATE}))
+            try:
+                assert await asyncio.to_thread(started.wait, 2)
+                health = await asyncio.wait_for(http.get("/api/health"), timeout=2)
+                assert health.status_code == 200
+            finally:
+                release.set()
+            assert (await parsing).status_code == 200
+
+    asyncio.run(run())

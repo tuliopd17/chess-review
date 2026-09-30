@@ -7,7 +7,9 @@ públicas de um usuário.
 from __future__ import annotations
 
 import httpx
-from datetime import datetime
+import json
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import List, Dict
 
 
@@ -17,7 +19,27 @@ LICHESS_BASE = "https://lichess.org/api"
 USER_AGENT = "ChessReview/1.0 (open-source community tool)"
 
 
-async def fetch_chesscom_recent(username: str, limit: int = 20) -> List[Dict]:
+class UserNotFound(ValueError):
+    """O serviço externo confirmou que o nome de usuário não existe."""
+
+
+@asynccontextmanager
+async def _using_client(client: httpx.AsyncClient | None):
+    """Reutiliza o pool da aplicação; chamadas avulsas continuam funcionando."""
+    if client is not None:
+        yield client
+    else:
+        async with httpx.AsyncClient(timeout=30.0, headers={"User-Agent": USER_AGENT}) as owned:
+            yield owned
+
+
+def _utc_iso(timestamp: float) -> str:
+    # Inclui UTC explicitamente: o navegador converte para o fuso do usuário,
+    # em vez de interpretar o timestamp da API como um horário local.
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+async def fetch_chesscom_recent(username: str, limit: int = 20, *, client: httpx.AsyncClient | None = None) -> List[Dict]:
     """
     Busca as partidas mais recentes do usuário no chess.com.
 
@@ -32,14 +54,13 @@ async def fetch_chesscom_recent(username: str, limit: int = 20) -> List[Dict]:
       - time_class: 'rapid', 'blitz', 'bullet', etc.
       - pgn: o PGN completo
     """
-    headers = {"User-Agent": USER_AGENT}
     games: List[Dict] = []
 
-    async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
+    async with _using_client(client) as client:
         # Lista de meses disponíveis (mais recentes primeiro).
         archives_resp = await client.get(f"{CHESS_COM_BASE}/player/{username}/games/archives")
         if archives_resp.status_code == 404:
-            raise ValueError(f"Usuário '{username}' não encontrado no chess.com")
+            raise UserNotFound(f"Usuário '{username}' não encontrado no chess.com")
         archives_resp.raise_for_status()
         archives = archives_resp.json().get("archives", [])
 
@@ -54,6 +75,9 @@ async def fetch_chesscom_recent(username: str, limit: int = 20) -> List[Dict]:
             for g in reversed(month_games):
                 if len(games) >= limit:
                     break
+                # O frontend/Stockfish só suporta xadrez padrão e partidas com PGN.
+                if g.get("rules", "chess") != "chess" or not g.get("pgn"):
+                    continue
                 games.append({
                     "id": g.get("url", ""),
                     "white": g.get("white", {}).get("username", "?"),
@@ -61,7 +85,7 @@ async def fetch_chesscom_recent(username: str, limit: int = 20) -> List[Dict]:
                     "white_rating": g.get("white", {}).get("rating"),
                     "black_rating": g.get("black", {}).get("rating"),
                     "result": _chesscom_result(g),
-                    "end_time": datetime.utcfromtimestamp(g.get("end_time", 0)).isoformat() if g.get("end_time") else None,
+                    "end_time": _utc_iso(g["end_time"]) if g.get("end_time") else None,
                     "time_class": g.get("time_class", ""),
                     "pgn": g.get("pgn", ""),
                     "source": "chess.com",
@@ -80,7 +104,7 @@ def _chesscom_result(game: Dict) -> str:
     return "1/2-1/2"
 
 
-async def fetch_lichess_recent(username: str, limit: int = 20) -> List[Dict]:
+async def fetch_lichess_recent(username: str, limit: int = 20, *, client: httpx.AsyncClient | None = None) -> List[Dict]:
     """
     Busca as partidas mais recentes do usuário no lichess.
 
@@ -102,18 +126,19 @@ async def fetch_lichess_recent(username: str, limit: int = 20) -> List[Dict]:
     }
 
     games: List[Dict] = []
-    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        async with client.stream("GET", f"{LICHESS_BASE}/games/user/{username}", params=params) as resp:
+    async with _using_client(client) as client:
+        async with client.stream("GET", f"{LICHESS_BASE}/games/user/{username}", params=params, headers=headers) as resp:
             if resp.status_code == 404:
-                raise ValueError(f"Usuário '{username}' não encontrado no lichess")
+                raise UserNotFound(f"Usuário '{username}' não encontrado no lichess")
             resp.raise_for_status()
-            import json
             async for line in resp.aiter_lines():
                 if not line.strip():
                     continue
                 try:
                     g = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if not isinstance(g, dict) or g.get("variant", "standard") != "standard" or not g.get("pgn"):
                     continue
                 players = g.get("players", {})
                 white = players.get("white", {})
@@ -125,11 +150,13 @@ async def fetch_lichess_recent(username: str, limit: int = 20) -> List[Dict]:
                     "white_rating": white.get("rating"),
                     "black_rating": black.get("rating"),
                     "result": _lichess_result(g),
-                    "end_time": datetime.utcfromtimestamp(g.get("lastMoveAt", 0) / 1000).isoformat() if g.get("lastMoveAt") else None,
+                    "end_time": _utc_iso(g["lastMoveAt"] / 1000) if g.get("lastMoveAt") else None,
                     "time_class": g.get("speed", ""),
                     "pgn": g.get("pgn", ""),
                     "source": "lichess",
                 })
+                if len(games) >= limit:
+                    break
     return games
 
 

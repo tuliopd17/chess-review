@@ -64,7 +64,7 @@ const board = new Chessboard(containerEl, {
       file: "pieces/standard.svg",
       tileSize: 40,
     },
-    animationDuration: 200,
+    animationDuration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200,
   },
   extensions: [
     { class: Markers, props: { sprite: "extensions/markers/markers.svg" } },

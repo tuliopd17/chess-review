@@ -7,7 +7,7 @@ instâncias o limite é por container — melhor que nada, sem Redis.
 from __future__ import annotations
 
 import time
-from collections import defaultdict
+from collections import OrderedDict
 from threading import Lock
 from typing import Any, Optional
 
@@ -15,13 +15,14 @@ from typing import Any, Optional
 # Limite de pedidos de import por IP (janela deslizante de 60s).
 RATE_LIMIT_MAX = 30
 RATE_LIMIT_WINDOW_S = 60.0
+RATE_LIMIT_MAX_KEYS = 4096
 
 # Cache de respostas de import (username+source+limit).
 CACHE_TTL_S = 300.0  # 5 minutos
 CACHE_MAX_ENTRIES = 256
 
 _lock = Lock()
-_hits: dict[str, list[float]] = defaultdict(list)
+_hits: OrderedDict[str, list[float]] = OrderedDict()
 _cache: dict[str, tuple[float, Any]] = {}
 
 
@@ -44,11 +45,17 @@ class RateLimitExceeded(Exception):
 def check_rate_limit(key: str) -> None:
     now = time.monotonic()
     with _lock:
-        stamps = _hits[key]
-        # Descarta timestamps fora da janela.
         cutoff = now - RATE_LIMIT_WINDOW_S
+        # A ordem acompanha a última requisição aceita. Limpa IPs inativos e
+        # limita memória mesmo com muitos usuários distintos ao longo do tempo.
+        while _hits:
+            oldest_key = next(iter(_hits))
+            if _hits[oldest_key][-1] > cutoff:
+                break
+            del _hits[oldest_key]
+        stamps = _hits.get(key, [])
         i = 0
-        while i < len(stamps) and stamps[i] < cutoff:
+        while i < len(stamps) and stamps[i] <= cutoff:
             i += 1
         if i:
             del stamps[:i]
@@ -57,6 +64,10 @@ def check_rate_limit(key: str) -> None:
             retry = max(1, int(RATE_LIMIT_WINDOW_S - (now - oldest)) + 1)
             raise RateLimitExceeded(retry_after=retry)
         stamps.append(now)
+        if key not in _hits and len(_hits) >= RATE_LIMIT_MAX_KEYS:
+            _hits.popitem(last=False)
+        _hits[key] = stamps
+        _hits.move_to_end(key)
 
 
 def cache_get(key: str) -> Optional[Any]:
@@ -66,7 +77,7 @@ def cache_get(key: str) -> Optional[Any]:
         if not entry:
             return None
         expires, value = entry
-        if expires < now:
+        if expires <= now:
             del _cache[key]
             return None
         return value
@@ -75,9 +86,9 @@ def cache_get(key: str) -> Optional[Any]:
 def cache_set(key: str, value: Any, ttl: float = CACHE_TTL_S) -> None:
     now = time.monotonic()
     with _lock:
-        if len(_cache) >= CACHE_MAX_ENTRIES:
+        if key not in _cache and len(_cache) >= CACHE_MAX_ENTRIES:
             # Remove expirados; se ainda cheio, remove o mais antigo.
-            expired = [k for k, (exp, _) in _cache.items() if exp < now]
+            expired = [k for k, (exp, _) in _cache.items() if exp <= now]
             for k in expired:
                 del _cache[k]
             if len(_cache) >= CACHE_MAX_ENTRIES:

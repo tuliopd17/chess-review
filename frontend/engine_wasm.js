@@ -20,6 +20,7 @@
 (function () {
   const READY_TIMEOUT_MS = 90000;   // download + boot pode demorar
   const ANALYZE_TIMEOUT_MS = 30000;
+  const STOP_TIMEOUT_MS = 3000;
 
   function log(...args) {
     if (window.SF_DEBUG) console.log("[sf]", ...args);
@@ -63,14 +64,20 @@
       this._currentDone = null;
       this._currentTimeout = null;
       this._lastInfo = {};
+      this._generation = 0;
+      this._cancelVersion = 0;
+      this._bootReject = null;
+      this._currentCancelled = false;
     }
 
     ready() {
       if (this.ready_) return Promise.resolve();
       if (this._readyPromise) return this._readyPromise;
 
-      this._readyPromise = (async () => {
+      const generation = this._generation;
+      const promise = (async () => {
         const engineUrl = await resolveEngineUrl();
+        if (generation !== this._generation) throw new Error("Inicialização da engine cancelada");
         log("URL do engine resolvida:", engineUrl);
 
         return new Promise((resolve, reject) => {
@@ -82,29 +89,38 @@
             reject(new Error("falha ao criar Worker: " + e.message));
             return;
           }
+          // Guarde também o worker em boot para quit() conseguir encerrá-lo.
+          this.worker = worker;
 
           let uciOk = false;
           let readyOk = false;
+          const fail = (error) => {
+            clearTimeout(timeout);
+            this._bootReject = null;
+            worker.onmessage = worker.onerror = worker.onmessageerror = null;
+            try { worker.terminate(); } catch {}
+            if (this.worker === worker) this.worker = null;
+            reject(error);
+          };
           const timeout = setTimeout(() => {
             if (!uciOk || !readyOk) {
-              try { worker.terminate(); } catch {}
-              reject(new Error(
+              fail(new Error(
                 "timeout aguardando engine inicializar (uci=" + uciOk + ", ready=" + readyOk + "). " +
                 "Verifique Network no DevTools."
               ));
             }
           }, READY_TIMEOUT_MS);
+          this._bootReject = fail;
 
           worker.onerror = (e) => {
-            clearTimeout(timeout);
             warn("worker.onerror", e);
-            reject(new Error("worker.onerror: " + (e.message || (e.filename + ":" + e.lineno) || "?")));
+            fail(new Error("worker.onerror: " + (e.message || "erro desconhecido")));
           };
           worker.onmessageerror = (e) => warn("worker.onmessageerror", e);
 
           const bootHandler = (e) => {
             const raw = e.data;
-            const text = typeof raw === "string" ? raw : (raw && raw.data) || "";
+            const text = typeof raw === "string" ? raw : (raw && typeof raw.data === "string" ? raw.data : "");
             if (!text) return;
             const lines = text.split(/\r?\n/);
             for (const line of lines) {
@@ -114,22 +130,31 @@
                 if (line.includes("uciok")) {
                   uciOk = true;
                   log("uciok recebido, configurando opções");
-                  worker.postMessage(`setoption name Hash value ${this._hashMb}`);
-                  worker.postMessage("setoption name MultiPV value 1");
-                  // WDL nativo do Stockfish (modelo interno ajustado por eval e
-                  // material). Builds sem a opção só imprimem "No such option"
-                  // — inofensivo.
-                  worker.postMessage("setoption name UCI_ShowWDL value true");
-                  worker.postMessage("ucinewgame");
-                  worker.postMessage("isready");
+                  try {
+                    worker.postMessage(`setoption name Hash value ${this._hashMb}`);
+                    worker.postMessage("setoption name MultiPV value 1");
+                    // Builds sem WDL só imprimem "No such option" (inofensivo).
+                    worker.postMessage("setoption name UCI_ShowWDL value true");
+                    worker.postMessage("ucinewgame");
+                    worker.postMessage("isready");
+                  } catch (error) { fail(error); return; }
                 }
               } else if (!readyOk) {
                 if (line.includes("readyok")) {
                   readyOk = true;
                   clearTimeout(timeout);
+                  this._bootReject = null;
                   this.worker = worker;
                   this.ready_ = true;
-                  worker.onmessage = this._mainHandler.bind(this);
+                  worker.onmessage = (event) => {
+                    if (this.worker === worker) this._mainHandler(event);
+                  };
+                  worker.onerror = (event) => {
+                    if (this.worker !== worker) return;
+                    warn("worker.onerror durante análise", event.message);
+                    this._disposeWorker();
+                    this._finishCurrent({});
+                  };
                   log("engine pronta");
                   resolve();
                   return;
@@ -140,16 +165,42 @@
 
           worker.onmessage = bootHandler;
           log(">> uci");
-          worker.postMessage("uci");
+          try { worker.postMessage("uci"); } catch (e) { fail(e); }
         });
       })();
 
-      return this._readyPromise;
+      this._readyPromise = promise;
+      // Uma falha transitória de download/boot não deve inutilizar a instância.
+      promise.catch(() => {
+        if (this._readyPromise === promise) this._readyPromise = null;
+      });
+      return promise;
+    }
+
+    _disposeWorker() {
+      this._generation++;
+      if (this._bootReject) this._bootReject(new Error("Inicialização da engine cancelada"));
+      if (this.worker) {
+        this.worker.onmessage = this.worker.onerror = this.worker.onmessageerror = null;
+        try { this.worker.terminate(); } catch {}
+      }
+      this.worker = null;
+      this.ready_ = false;
+      this._readyPromise = null;
+    }
+
+    _finishCurrent(info, line) {
+      const done = this._currentDone;
+      this._currentDone = null;
+      this._currentHandler = null;
+      if (this._currentTimeout) clearTimeout(this._currentTimeout);
+      this._currentTimeout = null;
+      if (done) done(info, line);
     }
 
     _mainHandler(e) {
       const raw = e.data;
-      const text = typeof raw === "string" ? raw : (raw && raw.data) || "";
+      const text = typeof raw === "string" ? raw : (raw && typeof raw.data === "string" ? raw.data : "");
       if (!text) return;
       const lines = text.split(/\r?\n/);
       for (const line of lines) {
@@ -169,17 +220,7 @@
           try { this._currentHandler(info, this._lastInfo); } catch (e) { warn(e); }
         }
       } else if (line.startsWith("bestmove")) {
-        const handler = this._currentDone;
-        const lastInfo = this._lastInfo;
-        this._currentDone = null;
-        this._currentHandler = null;
-        if (this._currentTimeout) {
-          clearTimeout(this._currentTimeout);
-          this._currentTimeout = null;
-        }
-        if (handler) {
-          try { handler(lastInfo, line); } catch (e) { warn(e); }
-        }
+        this._finishCurrent(this._lastInfo, line);
       }
     }
 
@@ -209,50 +250,67 @@
           break;
         }
       }
-      return out.score ? out : null;
+      return out.score && ["cp", "mate"].includes(out.score.type)
+        && Number.isFinite(out.score.value) && out.multipv > 0 ? out : null;
     }
 
     analyze(fen, opts, onInfo, onDone) {
-      const job = () => new Promise((resolve) => {
-        if (!this.worker) {
-          warn("analyze chamada sem worker pronto");
-          resolve({});
-          return;
+      opts = opts || {};
+      const cancelVersion = this._cancelVersion;
+      const job = async () => {
+        try { await this.ready(); } catch (e) {
+          if (cancelVersion !== this._cancelVersion) return {};
+          throw e;
         }
-        this._lastInfo = {};
-        this._currentHandler = onInfo || (() => {});
-        this._currentReqId++;
-        const reqId = this._currentReqId;
+        if (cancelVersion !== this._cancelVersion) return {};
+        return new Promise((resolve) => {
+          this._lastInfo = {};
+          this._currentCancelled = false;
+          this._currentHandler = onInfo || (() => {});
+          this._currentReqId++;
+          const reqId = this._currentReqId;
 
-        const finish = (info, line) => {
-          if (onDone) { try { onDone(info, line); } catch (e) { warn(e); } }
-          resolve(info);
-        };
-        this._currentDone = finish;
+          const finish = (info, line) => {
+            if (!this._currentCancelled && onDone) {
+              try { onDone(info, line); } catch (e) { warn(e); }
+            }
+            resolve(this._currentCancelled ? {} : info);
+          };
+          this._currentDone = finish;
 
-        this._currentTimeout = setTimeout(() => {
-          if (this._currentReqId === reqId && this._currentDone === finish) {
-            warn("analyze timeout, abortando", { fen, opts });
-            try { this.worker.postMessage("stop"); } catch {}
-            this._currentTimeout = setTimeout(() => {
-              if (this._currentDone === finish) {
-                warn("analyze timeout duplo, forçando resolve");
-                this._currentDone = null;
-                this._currentHandler = null;
-                resolve(this._lastInfo);
-              }
-            }, 3000);
+          // "go infinite" pertence ao painel ao vivo e só termina com stop.
+          // O watchdog limita buscas finitas; cancelar/quit sempre tem proteção.
+          if (opts.depth || opts.movetime) this._currentTimeout = setTimeout(() => {
+            if (this._currentReqId === reqId && this._currentDone === finish) {
+              warn("analyze timeout, abortando", { fen, opts });
+              try { this.worker.postMessage("stop"); } catch {}
+              this._currentTimeout = setTimeout(() => {
+                if (this._currentDone === finish) {
+                  warn("analyze timeout duplo, reciclando worker");
+                  // bestmove tardio de um worker sem resposta a stop seria
+                  // confundido com a próxima posição da fila.
+                  this._disposeWorker();
+                  this._finishCurrent({});
+                }
+              }, STOP_TIMEOUT_MS);
+            }
+          }, Math.max(ANALYZE_TIMEOUT_MS, (opts.movetime || 0) + STOP_TIMEOUT_MS));
+
+          const multipv = opts.multipv || 1;
+          log(">> setoption MultiPV", multipv);
+          try {
+            this.worker.postMessage(`setoption name MultiPV value ${multipv}`);
+            this.worker.postMessage(`position fen ${fen}`);
+            if (opts.depth)         this.worker.postMessage(`go depth ${opts.depth}`);
+            else if (opts.movetime) this.worker.postMessage(`go movetime ${opts.movetime}`);
+            else                    this.worker.postMessage("go infinite");
+          } catch (e) {
+            warn("falha ao enviar análise", e);
+            this._disposeWorker();
+            this._finishCurrent({});
           }
-        }, ANALYZE_TIMEOUT_MS);
-
-        const multipv = opts.multipv || 1;
-        log(">> setoption MultiPV", multipv);
-        this.worker.postMessage(`setoption name MultiPV value ${multipv}`);
-        this.worker.postMessage(`position fen ${fen}`);
-        if (opts.depth)         this.worker.postMessage(`go depth ${opts.depth}`);
-        else if (opts.movetime) this.worker.postMessage(`go movetime ${opts.movetime}`);
-        else                    this.worker.postMessage("go infinite");
-      });
+        });
+      };
 
       return this._enqueue(job);
     }
@@ -292,22 +350,28 @@
     }
 
     cancelAll() {
+      this._cancelVersion++;
       for (const item of this._queue) {
         try { item.resolve({}); } catch {}
       }
       this._queue = [];
+      if (!this._currentDone) return;
+      this._currentCancelled = true;
+      this._currentHandler = null;
       this.stop();
+      if (this._currentTimeout) clearTimeout(this._currentTimeout);
+      const done = this._currentDone;
+      this._currentTimeout = setTimeout(() => {
+        if (this._currentDone !== done) return;
+        this._disposeWorker();
+        this._finishCurrent({});
+      }, STOP_TIMEOUT_MS);
     }
 
     quit() {
-      if (this.worker) {
-        try { this.worker.postMessage("quit"); } catch {}
-        try { this.worker.terminate(); } catch {}
-      }
-      this.worker = null;
-      this.ready_ = false;
-      this._readyPromise = null;
-      this._queue = [];
+      this.cancelAll();
+      this._disposeWorker();
+      this._finishCurrent({});
     }
   }
 
@@ -325,18 +389,26 @@
       this.engines = [];
       this._readyPromise = null;
       this._batchId = 0;
+      this._readyGeneration = 0;
     }
 
     ready() {
       if (this._readyPromise) return this._readyPromise;
-      this._readyPromise = (async () => {
-        this.engines = [];
-        for (let i = 0; i < this.size; i++) {
-          this.engines.push(new BrowserEngine(this.engineOpts));
+      const generation = this._readyGeneration;
+      const engines = Array.from({ length: this.size }, () => new BrowserEngine(this.engineOpts));
+      this.engines = engines;
+      const promise = Promise.all(engines.map((e) => e.ready())).then(() => {
+        if (generation !== this._readyGeneration) throw new Error("Inicialização do pool cancelada");
+      }).catch((error) => {
+        engines.forEach((e) => e.quit());
+        if (this._readyPromise === promise) {
+          this._readyPromise = null;
+          this.engines = [];
         }
-        await Promise.all(this.engines.map((e) => e.ready()));
-      })();
-      return this._readyPromise;
+        throw error;
+      });
+      this._readyPromise = promise;
+      return promise;
     }
 
     /**
@@ -349,12 +421,13 @@
      * resultado VAZIO (sem score). Sem tratar isso, aquela posição ficaria com
      * eval 0 silenciosamente e contaminaria a classificação. Então validamos cada
      * resultado; se vier inválido, RECICLAMOS o engine daquele slot (novo Worker)
-     * e re-enfileiramos a posição, até MAX_ATTEMPTS. Só depois disso desistimos e
-     * reportamos o que veio — o pior caso é uma posição neutra, nunca um travamento.
+     * e re-enfileiramos a posição, até MAX_ATTEMPTS. Se todas falharem, a análise
+     * termina com erro explícito; inventar eval 0 contaminaria as classificações.
      */
     async analyzeAll(positions, optsFor, onResult) {
+      this.cancelAll();
+      const myBatch = this._batchId;
       await this.ready();
-      const myBatch = ++this._batchId;
       const MAX_ATTEMPTS = 3;
       const attempts = new Array(positions.length).fill(0);
       const retry = [];        // índices a re-tentar (prioridade sobre os novos)
@@ -366,11 +439,19 @@
         return -1;
       };
       // Um resultado é utilizável se a linha principal (multipv 1) tem score.
-      const isValid = (info) => !!(info && info[1] && info[1].score);
+      const isValid = (info) => !!(info && info[1] && info[1].score
+        && ["cp", "mate"].includes(info[1].score.type)
+        && Number.isFinite(info[1].score.value));
+      const checkBatch = () => {
+        if (myBatch === this._batchId) return;
+        const error = new Error("Análise cancelada");
+        error.name = "AbortError";
+        throw error;
+      };
 
       const runSlot = async (slot) => {
         while (true) {
-          if (myBatch !== this._batchId) return; // cancelado por um novo batch
+          checkBatch();
           const i = takeIndex();
           if (i === -1) return;
           attempts[i]++;
@@ -380,7 +461,7 @@
           } catch (e) {
             info = null;
           }
-          if (myBatch !== this._batchId) return;
+          checkBatch();
 
           if (isValid(info)) {
             onResult(i, info);
@@ -392,16 +473,20 @@
             retry.push(i);
             try { this.engines[slot].quit(); } catch {}
             const ne = new BrowserEngine(this.engineOpts);
-            try { await ne.ready(); } catch (e) { console.warn("[pool] falha ao reiniciar engine:", e); }
             this.engines[slot] = ne;
+            try { await ne.ready(); } catch (e) { console.warn("[pool] falha ao reiniciar engine:", e); }
+            checkBatch();
           } else {
-            // Esgotou as tentativas: reporta o que houver (posição neutra) e segue.
-            console.warn(`[pool] posição ${i} falhou após ${MAX_ATTEMPTS} tentativas; reportando resultado parcial`);
-            onResult(i, info || {});
+            throw new Error(`Stockfish não conseguiu avaliar a posição ${i + 1} após ${MAX_ATTEMPTS} tentativas. Tente analisar novamente.`);
           }
         }
       };
-      await Promise.all(this.engines.map((_, slot) => runSlot(slot)));
+      try {
+        await Promise.all(this.engines.map((_, slot) => runSlot(slot)));
+      } catch (error) {
+        if (myBatch === this._batchId) this.cancelAll();
+        throw error;
+      }
     }
 
     cancelAll() {
@@ -410,6 +495,8 @@
     }
 
     quit() {
+      this.cancelAll();
+      this._readyGeneration++;
       this.engines.forEach((e) => { try { e.quit(); } catch {} });
       this.engines = [];
       this._readyPromise = null;

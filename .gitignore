@@ -27,3 +27,11 @@ graphify-out/
 # Node (tooling de build do CSS — Tailwind)
 node_modules/
 npm-debug.log*
+
+# Artefatos locais de validação
+.tmp-*/
+.playwright-mcp/
+desktop-*.png
+mobile-*.png
+tablet-*.png
+explore-*.png

@@ -7,6 +7,7 @@
 // ============================================================
 // Estado global
 // ============================================================
+const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const state = {
   board: null,
   analysis: null,          // payload final (após "done")
@@ -36,6 +37,8 @@ const state = {
   // ----- Pool de engines (análise da partida em paralelo) -----
   enginePool: null,        // EnginePool (criado sob demanda na 1ª análise)
   analysisRunId: 0,        // invalida análises antigas se uma nova começar
+  analysisAbort: null,
+  initialFen: START_FEN,
 
   // ----- Modo exploração -----
   exploring: false,
@@ -97,6 +100,15 @@ function bootApp() {
   initSummaryActions();
   initMobileShell();
   initBoardSwipe();
+  document.addEventListener("visibilitychange", () => {
+    clearTimeout(state.liveTimer);
+    if (document.hidden) {
+      state.liveToken++;
+      state.engine?.cancelAll();
+    } else if (state.partialMoves.length && !state.streaming) {
+      startLiveAnalysis(currentFen());
+    }
+  });
   loadFromHash();
 }
 
@@ -106,6 +118,7 @@ function bootApp() {
 function loadPrefs() {
   let p = {};
   try { p = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { p = {}; }
+  if (!p || typeof p !== "object" || Array.isArray(p)) p = {};
   if (p.chesscomUser) {
     const el = document.getElementById("chesscom-user");
     if (el && !el.value) el.value = p.chesscomUser;
@@ -114,9 +127,9 @@ function loadPrefs() {
     const el = document.getElementById("lichess-user");
     if (el && !el.value) el.value = p.lichessUser;
   }
-  if (p.engineMultiPV) state.engineMultiPV = p.engineMultiPV;
-  if (p.engineDepth != null) state.engineDepth = p.engineDepth;
-  if (p.reviewDepth) state.reviewDepth = p.reviewDepth;
+  if ([1, 2, 3].includes(p.engineMultiPV)) state.engineMultiPV = p.engineMultiPV;
+  if ([0, 14, 18, 22].includes(p.engineDepth)) state.engineDepth = p.engineDepth;
+  if ([12, 14, 15, 16].includes(p.reviewDepth)) state.reviewDepth = p.reviewDepth;
 
   const mpv = document.getElementById("engine-multipv");
   const dSel = document.getElementById("engine-depth-sel");
@@ -198,6 +211,7 @@ function initBoard() {
   state.board.enableMoveInput(handleMoveInput);
 
   document.getElementById("btn-back-to-game").onclick = exitExploreMode;
+  document.getElementById("cancel-analysis-btn")?.addEventListener("click", cancelReview);
 }
 
 /* ===== Move input do cm-chessboard: ativa modo exploração ao mover ===== */
@@ -241,6 +255,7 @@ function handleMoveInput(event) {
     if (!move) return false;
     // Lance válido — agenda render e análise ao vivo.
     setTimeout(() => {
+      if (!state.exploring || state.exploreChess !== chess) return;
       renderExploreUI();
       startLiveAnalysis(chess.fen());
     }, 50);
@@ -304,6 +319,14 @@ function initPromoDialog() {
   });
   document.addEventListener("keydown", (e) => {
     if (dlg.hidden) return;
+    if (e.key === "Tab") {
+      const buttons = Array.from(dlg.querySelectorAll("button"));
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (!dlg.contains(document.activeElement)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      return;
+    }
     if (e.key === "Escape") hidePromoDialog(null);
     const map = { q: "q", r: "r", b: "b", n: "n" };
     const p = map[e.key?.toLowerCase()];
@@ -319,10 +342,15 @@ function showPromoDialog() {
     if (state.promoPending) {
       try { state.promoPending.resolve(null); } catch {}
     }
-    state.promoPending = { resolve };
+    const pending = { resolve, previousFocus: document.activeElement };
+    state.promoPending = pending;
     dlg.hidden = false;
     dlg.setAttribute("aria-hidden", "false");
     dlg.querySelector("[data-piece='q']")?.focus();
+    // O tabuleiro pode recuperar o foco ao concluir o evento de movimento.
+    requestAnimationFrame(() => {
+      if (state.promoPending === pending) dlg.querySelector("[data-piece='q']")?.focus({ preventScroll: true });
+    });
   });
 }
 
@@ -334,14 +362,15 @@ function hidePromoDialog(piece) {
   }
   const pending = state.promoPending;
   state.promoPending = null;
+  pending?.previousFocus?.focus?.({ preventScroll: true });
   if (pending) pending.resolve(piece || null);
 }
 
 function currentFen() {
   if (state.exploring && state.exploreChess) return state.exploreChess.fen();
   const ply = state.currentPly;
-  if (ply === 0) return "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-  return state.partialMoves[ply - 1].fen_after;
+  if (ply === 0) return state.initialFen;
+  return state.partialMoves[ply - 1]?.fen_after || state.initialFen;
 }
 
 function enterExploreMode() {
@@ -357,7 +386,6 @@ function exitExploreMode() {
   state.exploreChess = null;
   document.getElementById("explore-banner").style.display = "none";
   goToPly(state.exploreStartPly);
-  startLiveAnalysis(currentFen());
 }
 
 function renderExploreUI() {
@@ -377,11 +405,25 @@ function renderExploreUI() {
 }
 
 function initTabs() {
-  document.querySelectorAll(".tab-btn").forEach(btn => {
+  const tabs = Array.from(document.querySelectorAll(".tab-btn"));
+  tabs.forEach((btn, index) => {
+    btn.tabIndex = btn.classList.contains("active") ? 0 : -1;
+    const panel = document.getElementById("tab-" + btn.dataset.tab);
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", btn.id);
+    btn.addEventListener("keydown", (e) => {
+      const target = e.key === "ArrowRight" ? (index + 1) % tabs.length
+        : e.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+        : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
+      if (target !== null) { e.preventDefault(); tabs[target].focus(); tabs[target].click(); }
+    });
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      tabs.forEach(b => { b.setAttribute("aria-selected", "false"); b.tabIndex = -1; });
       document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
       btn.classList.add("active");
+      btn.setAttribute("aria-selected", "true");
+      btn.tabIndex = 0;
       document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     });
   });
@@ -514,25 +556,28 @@ function initControls() {
   bindNav("btn-flip",  navActions.flip);
 
   document.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
-    if (e.key === "ArrowLeft")  navActions.prev();
-    if (e.key === "ArrowRight") navActions.next();
-    if (e.key === "Home")       navActions.start();
-    if (e.key === "End")        navActions.end();
-    if (e.key === "f" || e.key === "F") navActions.flip();
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || state.promoPending) return;
+    if (e.target.closest?.("input, textarea, select, [contenteditable]:not([contenteditable='false'])")) return;
+    const action = { ArrowLeft: navActions.prev, ArrowRight: navActions.next,
+      Home: navActions.start, End: navActions.end, f: navActions.flip, F: navActions.flip }[e.key];
+    if (action) { e.preventDefault(); action(); }
   });
+  updateNavigationControls();
 }
 
 function initBoardSwipe() {
   const container = document.querySelector(".board-container");
   if (!container) return;
-  let startX = 0;
+  let startX = null;
   let startY = 0;
   let startTime = 0;
 
   container.addEventListener("touchstart", (e) => {
+    startX = null;
     if (e.touches.length !== 1) return;
     // Não ativa swipe se o toque foi em uma peça (preserva drag and drop do cm-chessboard)
+    const square = e.target.closest?.("[data-square]")?.dataset.square;
+    if (square && state.board?.api.getPiece(square)) return;
     if (e.target.closest(".piece") || e.target.closest(".cm-chessboard-piece")) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
@@ -540,11 +585,11 @@ function initBoardSwipe() {
   }, { passive: true });
 
   container.addEventListener("touchend", (e) => {
-    if (!startX || e.changedTouches.length !== 1) return;
+    if (startX === null || e.changedTouches.length !== 1) return;
     const diffX = e.changedTouches[0].clientX - startX;
     const diffY = e.changedTouches[0].clientY - startY;
     const duration = Date.now() - startTime;
-    startX = 0;
+    startX = null;
 
     // Swipe horizontal fluido (<400ms, >40px horizontal, movimento vertical contido)
     if (duration < 400 && Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.4) {
@@ -555,6 +600,7 @@ function initBoardSwipe() {
       }
     }
   }, { passive: true });
+  container.addEventListener("touchcancel", () => { startX = null; }, { passive: true });
 }
 
 function initImportButtons() {
@@ -669,7 +715,7 @@ async function encodePgnToHash(pgn) {
 }
 
 async function decodePgnFromHash(hash) {
-  const raw = hash.replace(/^#/, "");
+  const raw = hash.replace(/^#/, "").split("&")[0];
   const eq = raw.indexOf("=");
   if (eq < 0) return null;
   const key = raw.slice(0, eq);
@@ -698,7 +744,8 @@ async function loadFromHash() {
   const input = document.getElementById("pgn-input");
   if (input) input.value = pgn;
   document.querySelector(".tab-btn[data-tab='pgn']")?.click();
-  analyzePgnStreaming(pgn);
+  const gameIndex = Number(new URLSearchParams(location.hash.slice(1)).get("game")) || 0;
+  analyzePgnStreaming(pgn, null, { gameIndex: Math.max(0, Math.min(500, gameIndex)) });
 }
 
 /* ============================================================
@@ -737,6 +784,7 @@ async function initLiveEngine() {
     await state.engine.ready();
     state.engineReady = true;
     setEngineStatus("ready");
+    if (state.partialMoves.length && !state.streaming) startLiveAnalysis(currentFen());
   } catch (e) {
     console.warn("Engine WASM falhou:", e);
     setEngineStatus("error");
@@ -777,19 +825,25 @@ async function getEnginePool() {
     await state.enginePool.ready();
     return state.enginePool;
   }
-  // 1 worker por núcleo, deixando ~2 livres pra UI/engine ao vivo. Cap em 6 pra
-  // limitar memória (cada instância tem sua própria Hash table).
-  const hc = navigator.hardwareConcurrency || 4;
-  const size = Math.min(6, Math.max(2, hc - 2));
-  console.log(`[pool] criando ${size} engines (hardwareConcurrency=${hc})`);
-  state.enginePool = new EnginePool(size, { hashMb: 16 });
+  const { size, hashMb } = reviewPoolOptions(navigator, isMobileShell());
+  state.enginePool = new EnginePool(size, { hashMb });
   await state.enginePool.ready();
   return state.enginePool;
 }
 
+function reviewPoolOptions(device, mobile) {
+  const cores = Math.max(1, device.hardwareConcurrency || 4);
+  const memory = device.deviceMemory;
+  const lowMemory = memory != null && memory <= 2;
+  const cap = lowMemory ? 1 : (mobile || (memory != null && memory <= 4)) ? 2 : 4;
+  return { size: Math.min(cap, Math.max(1, cores - 2)), hashMb: lowMemory ? 8 : 16 };
+}
+
 function startLiveAnalysis(fen) {
+  clearTimeout(state.liveTimer);
   if (!state.engineReady) return;
   if (state.streaming) return; // não interrompe análise da partida
+  if (document.hidden) return;
 
   // Cancela a análise ao vivo anterior pra engine começar JÁ na nova posição.
   // Sem isso, a análise nova fica na fila atrás da antiga, que continua emitindo
@@ -816,7 +870,7 @@ function startLiveAnalysis(fen) {
         state._liveRenderPending = true;
         setTimeout(() => {
           state._liveRenderPending = false;
-          renderLivePanel();
+          if (token === state.liveToken) renderLivePanel();
         }, 100);
       }
     },
@@ -825,7 +879,11 @@ function startLiveAnalysis(fen) {
       state.liveInfo = { ...final };
       renderLivePanel();
     }
-  );
+  ).catch((error) => {
+    if (token !== state.liveToken) return;
+    console.warn("Engine ao vivo indisponível:", error);
+    setEngineStatus("error");
+  });
 }
 
 function renderLivePanel() {
@@ -933,26 +991,34 @@ function renderEngineArrow(info) {
 // ============================================================
 // Buscar partidas
 // ============================================================
+const gameFetches = new Map();
 async function fetchGames(source, username, containerId) {
   const container = document.getElementById(containerId);
+  gameFetches.get(source)?.abort();
+  const controller = new AbortController();
+  gameFetches.set(source, controller);
   container.innerHTML = "<p class='placeholder'>Buscando…</p>";
   try {
-    const r = await fetch(`/api/${source}/${encodeURIComponent(username)}?limit=20`);
+    const r = await fetch(`/api/${source}/${encodeURIComponent(username)}?limit=20`, { signal: controller.signal });
+    if (controller.signal.aborted) return;
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
+      if (controller.signal.aborted) return;
       const detail = apiErrorDetail(err.detail, r.statusText || "erro");
       container.innerHTML = `<p class='placeholder'>Erro: ${escapeHtml(detail)}</p>`;
       if (r.status === 429) showToast(detail, "error");
       return;
     }
     const data = await r.json();
+    if (controller.signal.aborted) return;
     if (!data.games?.length) {
       container.innerHTML = "<p class='placeholder'>Nenhuma partida encontrada.</p>";
       return;
     }
     container.innerHTML = "";
     data.games.forEach(g => {
-      const el = document.createElement("div");
+      const el = document.createElement("button");
+      el.type = "button";
       el.className = "game-item";
       const date = g.end_time ? new Date(g.end_time).toLocaleString("pt-BR") : "";
       const resParts = String(g.result || "*").split("-");
@@ -977,9 +1043,11 @@ async function fetchGames(source, username, containerId) {
       container.appendChild(el);
     });
   } catch (e) {
+    if (controller.signal.aborted) return;
     container.innerHTML = `<p class='placeholder'>Erro: ${escapeHtml(e.message)}</p>`;
     showToast("Falha ao buscar partidas: " + e.message, "error");
   }
+  finally { if (gameFetches.get(source) === controller) gameFetches.delete(source); }
 }
 
 // ============================================================
@@ -989,7 +1057,19 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
   // Toda nova chamada invalida a análise anterior (evita corrida se o usuário
   // clicar em outra partida no meio de uma análise) e cancela trabalho pendente.
   const runId = ++state.analysisRunId;
+  clearTimeout(state.liveTimer);
+  state.analysisAbort?.abort();
+  const controller = new AbortController();
+  state.analysisAbort = controller;
+  state.streaming = true;
+  state.liveToken++;
+  state.liveInfo = {};
+  state.exploring = false;
+  state.exploreChess = null;
+  hidePromoDialog(null);
+  document.getElementById("explore-banner").style.display = "none";
   const gameIndex = opts.gameIndex != null ? opts.gameIndex : (state.gameIndex || 0);
+  const reviewDepth = state.reviewDepth || 15;
   state.currentPgn = pgn;
   state.gameIndex = gameIndex;
   state.lastPlayerUsername = playerUsername || null;
@@ -999,20 +1079,24 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
   // Cache local: chave inclui o índice da partida (multi-PGN) e a depth da review.
   // Só reusa cache quando for a 1ª partida do arquivo (histórico legado) e depth
   // padrão — senão reanalisa com os parâmetros atuais.
-  const cacheKey = historyCacheKey(pgn, gameIndex, state.reviewDepth);
+  const cacheKey = historyCacheKey(pgn, gameIndex, reviewDepth);
   const cached = await getHistoryEntry(cacheKey);
+  if (runId !== state.analysisRunId) return;
   if (cached?.analysis?.moves?.length) {
+    resetForNewAnalysis();
     state.analysis = cached.analysis;
     state.partialMoves = cached.analysis.moves.slice();
     state.partialHeaders = cached.analysis.headers;
     state.partialOpening = cached.analysis.opening;
     state.totalPlies = cached.analysis.moves.length;
+    state.initialFen = cached.analysis.moves[0].fen_before || cached.analysis.headers?.FEN || START_FEN;
     state.availableGames = cached.availableGames || [];
     state.gameIndex = cached.gameIndex != null ? cached.gameIndex : gameIndex;
     renderMultiGamePicker(state.availableGames, state.gameIndex);
     autoDetectOrientation(cached.analysis.headers, playerUsername);
     showProgress(false);
     setHasGame(true);
+    state.streaming = false;
     renderAll(true);
     // Mobile: sobe pro tabuleiro pra acompanhar a análise.
     showMobileBoard({ scroll: false });
@@ -1031,18 +1115,24 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pgn, game_index: gameIndex }),
+      signal: controller.signal,
     });
+    if (runId !== state.analysisRunId) return;
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
+      if (runId !== state.analysisRunId || controller.signal.aborted) return;
       const detail = apiErrorDetail(err.detail, r.statusText || "erro");
       showToast("Erro no parse do PGN: " + detail, "error");
       showProgress(false);
+      state.streaming = false;
       return;
     }
     parsed = await r.json();
   } catch (e) {
+    if (runId !== state.analysisRunId || controller.signal.aborted) return;
     showToast("Erro ao falar com o backend: " + e.message, "error");
     showProgress(false);
+    state.streaming = false;
     return;
   }
 
@@ -1056,12 +1146,14 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
   state.partialHeaders = parsed.headers;
   state.partialOpening = parsed.opening;
   state.totalPlies = parsed.moves.length;
+  state.initialFen = parsed.moves[0]?.fen_before || parsed.headers?.FEN || START_FEN;
   // Auto-detecta orientação do tabuleiro: se o jogador está de pretas,
   // vira o tabuleiro pra ele ver da perspectiva dele.
   autoDetectOrientation(parsed.headers, playerUsername);
   setHasGame(true);
   renderOpening(parsed.opening);
   renderPlayerBars();
+  goToPly(0);
   showProgress(true, 0, state.totalPlies);
 
   // 2. Stockfish WASM analisa as posições em paralelo (pool de workers).
@@ -1072,6 +1164,7 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     try {
       pool = await getEnginePool();
     } catch (e) {
+      if (runId !== state.analysisRunId) return;
       showToast("Falha ao carregar o Stockfish WASM: " + e.message, "error");
       showProgress(false);
       return;
@@ -1082,12 +1175,13 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     // Profundidade da REVIEW (classificação da partida) é independente da
     // profundidade do painel ao vivo. Valor padrão 15; o usuário escolhe em
     // "Review" no card da engine.
-    const depth = state.reviewDepth || 15;
+    const depth = reviewDepth;
     const result = await ChessReviewAnalysis.analyzeGame(
       parsed,
       pool,
       {
         depth,
+        signal: controller.signal,
         // Fase 2 da análise: lances críticos re-verificados em profundidade
         // maior (mata falso-blunder de depth raso). Reaproveita a barra de
         // progresso com um rótulo próprio.
@@ -1106,6 +1200,7 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
     if (runId !== state.analysisRunId) return; // resultado obsoleto — descarta
     state.analysis = result;
     state.partialMoves = result.moves;
+    state.streaming = false;
     showProgress(false);
     renderAll(false);
     // Persiste sem bloquear nem contaminar o caminho de sucesso: se o save
@@ -1117,6 +1212,7 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
       sourcePgn: pgn,
     }).catch((err) => console.warn("[history] falha ao salvar:", err));
   } catch (e) {
+    if (runId !== state.analysisRunId || controller.signal.aborted) return;
     console.error(e);
     if (runId === state.analysisRunId) {
       showToast("Erro durante análise: " + e.message, "error");
@@ -1125,6 +1221,19 @@ async function analyzePgnStreaming(pgn, playerUsername = null, opts = {}) {
   } finally {
     if (runId === state.analysisRunId) state.streaming = false;
   }
+}
+
+function cancelReview() {
+  if (!state.streaming) return;
+  state.analysisRunId++;
+  state.analysisAbort?.abort();
+  state.enginePool?.cancelAll();
+  state.streaming = false;
+  showProgress(false);
+  goToPly(Math.min(state.currentPly, currentMoves().length));
+  showToast(currentMoves().length
+    ? "Análise interrompida. Os lances já revisados continuam disponíveis."
+    : "Análise interrompida. Você pode iniciar outra revisão.", "info", 3000);
 }
 
 function historyCacheKey(pgn, gameIndex, reviewDepth) {
@@ -1159,7 +1268,8 @@ function renderMultiGamePicker(games, activeIndex) {
   }
   list.innerHTML = "";
   games.forEach((g) => {
-    const el = document.createElement("div");
+    const el = document.createElement("button");
+    el.type = "button";
     el.className = "game-item" + (g.index === activeIndex ? " active" : "");
     const meta = [g.event, g.date, g.result].filter(Boolean).join(" · ");
     el.innerHTML = `
@@ -1185,6 +1295,7 @@ function resetForNewAnalysis() {
   state.partialOpening = null;
   state.totalPlies = 0;
   state.currentPly = 0;
+  state.initialFen = START_FEN;
   // Reseta orientação pra "white" — autoDetectOrientation redefine depois
   // se o jogador for as pretas.
   state.orientation = "white";
@@ -1213,6 +1324,8 @@ function showProgress(visible, current = 0, total = 0, label = "") {
   const fill = document.getElementById("progress-fill");
   const txt = document.getElementById("progress-text");
   bar.style.display = visible ? "block" : "none";
+  const cancel = document.getElementById("cancel-analysis-btn");
+  if (cancel) cancel.hidden = !visible;
   if (visible) {
     const pct = total > 0 ? (current / total) * 100 : 0;
     fill.style.width = pct + "%";
@@ -1357,38 +1470,46 @@ function renderOpening(opening) {
   `;
 }
 
+function moveNumber(move) {
+  return Number(move.fen_before?.split(" ")[5]) || move.move_number;
+}
+
+function updateNavigationControls() {
+  const end = currentMoves().length;
+  for (const id of ["btn-start", "btn-prev"]) document.getElementById(id).disabled = state.currentPly === 0;
+  for (const id of ["btn-next", "btn-end"]) document.getElementById(id).disabled = state.currentPly >= end;
+}
+
 function renderMovesListFull() {
   const container = document.getElementById("moves-container");
   container.innerHTML = "";
   const moves = currentMoves();
-  for (let i = 0; i < moves.length; i += 2) {
-    container.appendChild(buildMovePair(Math.floor(i / 2) + 1, moves[i], moves[i + 1]));
-  }
-  bindMoveCellClicks(container);
+  const fragment = document.createDocumentFragment();
+  for (const move of moves) appendMoveToList(fragment, move);
+  container.appendChild(fragment);
+  updateNavigationControls();
 }
 
 function renderMovesListIncremental(move) {
   const container = document.getElementById("moves-container");
-  const moves = state.partialMoves;
-  const idx = moves.length - 1;
-  if (idx % 2 === 0) {
-    // novo par (brancas)
-    const pair = buildMovePair(Math.floor(idx / 2) + 1, move, null);
-    container.appendChild(pair);
+  appendMoveToList(container, move);
+  updateNavigationControls();
+}
+
+function appendMoveToList(container, move) {
+  const num = moveNumber(move);
+  const lastPair = container.lastElementChild;
+  if (lastPair && lastPair.dataset.number === String(num)) {
+    lastPair.replaceChild(buildMoveCell(move), lastPair.children[move.color === "white" ? 1 : 2]);
   } else {
-    // completa par existente (pretas)
-    const lastPair = container.lastElementChild;
-    if (lastPair) {
-      const black = buildMoveCell(move);
-      lastPair.replaceChild(black, lastPair.children[2]);
-    }
+    container.appendChild(buildMovePair(num, move.color === "white" ? move : null, move.color === "black" ? move : null));
   }
-  bindMoveCellClicks(container);
 }
 
 function buildMovePair(num, whiteMove, blackMove) {
   const row = document.createElement("div");
   row.className = "move-pair";
+  row.dataset.number = num;
   const numEl = document.createElement("span");
   numEl.className = "num";
   numEl.textContent = num + ".";
@@ -1399,9 +1520,12 @@ function buildMovePair(num, whiteMove, blackMove) {
 }
 
 function buildMoveCell(move) {
-  const cell = document.createElement("span");
+  const cell = document.createElement("button");
+  cell.type = "button";
   cell.className = "move-cell";
   cell.dataset.ply = move.ply;
+  cell.setAttribute("aria-label", `${moveNumber(move)}${move.color === "white" ? "." : "..."} ${move.san}, ${CLASS_LABELS[move.classification] || move.classification}`);
+  cell.onclick = () => { goToPly(move.ply); showMobileBoard({ scroll: false }); };
   const sanSpan = document.createElement("span");
   sanSpan.textContent = move.san;
   cell.appendChild(sanSpan);
@@ -1411,18 +1535,6 @@ function buildMoveCell(move) {
   icon.title = CLASS_LABELS[move.classification] || move.classification;
   cell.appendChild(icon);
   return cell;
-}
-
-function bindMoveCellClicks(container) {
-  container.querySelectorAll(".move-cell").forEach(cell => {
-    const ply = parseInt(cell.dataset.ply, 10);
-    if (isNaN(ply)) return;
-    cell.onclick = () => {
-      goToPly(ply);
-      // Mobile: se o usuário rolou a lista, traz o tabuleiro de volta à vista.
-      showMobileBoard({ scroll: false });
-    };
-  });
 }
 
 function renderSummary() {
@@ -1483,11 +1595,11 @@ function renderCoach() {
   if (cs.critical_moves?.length) {
     document.getElementById("coach-critical-title").textContent = "Pontos críticos";
     document.getElementById("coach-critical").innerHTML = cs.critical_moves.map(m => `
-      <div class="critical-item" data-ply="${m.ply}">
+      <button type="button" class="critical-item" data-ply="${m.ply}">
         ${CLASS_ICONS[m.classification](16)}
-        <span>${m.move_number}${m.color === "white" ? "." : "..."} ${escapeHtml(m.san)}</span>
+        <span>${moveNumber(m)}${m.color === "white" ? "." : "..."} ${escapeHtml(m.san)}</span>
         <span style="color: var(--text-muted); font-size: 0.8rem; margin-left:auto;">${CLASS_LABELS[m.classification]}</span>
-      </div>
+      </button>
     `).join("");
     document.querySelectorAll("#coach-critical .critical-item").forEach(el => {
       el.onclick = () => {
@@ -1542,6 +1654,7 @@ function ensureHighcharts() {
 }
 
 async function renderEvalChart() {
+  const runId = state.analysisRunId;
   document.querySelector(".chart-wrapper").style.display = "";
   try {
     await ensureHighcharts();
@@ -1549,10 +1662,11 @@ async function renderEvalChart() {
     console.warn(e);
     return;
   }
+  if (runId !== state.analysisRunId || !state.analysis) return;
   if (state.evalChart) { state.evalChart.destroy(); state.evalChart = null; }
 
   const moves = currentMoves();
-  const labels = ["início", ...moves.map(m => `${m.move_number}${m.color === "white" ? "" : "..."}`)];
+  const labels = ["início", ...moves.map(m => `${moveNumber(m)}${m.color === "white" ? "" : "..."}`)];
 
   // Ponto 0 = posição inicial; depois um ponto por lance.
   // y = valor logístico em [-1,1]; rawCp guarda o cp original p/ tooltip.
@@ -1731,14 +1845,14 @@ function goToPly(ply) {
 
   // Tabuleiro (cm-chessboard)
   if (ply === 0) {
-    state.board.setPosition(state.board.FEN.start, true);
+    state.board.setPosition(state.initialFen, true);
   } else {
     state.board.setPosition(moves[ply - 1].fen_after, true);
   }
 
   // Info — revela a caixa (fica escondida até existir partida pra mostrar).
   const moveInfoEl = document.getElementById("move-info");
-  if (moveInfoEl) moveInfoEl.style.display = "";
+  if (moveInfoEl) moveInfoEl.style.display = state.totalPlies || moves.length ? "" : "none";
   const infoCls = document.getElementById("move-classification");
   const infoCmt = document.getElementById("move-comment");
   const infoPv  = document.getElementById("move-pv");
@@ -1753,7 +1867,7 @@ function goToPly(ply) {
     if (moveInfoEl) moveInfoEl.setAttribute("data-cls", m.classification);
     const iconHtml = CLASS_ICONS[m.classification] ? CLASS_ICONS[m.classification](22) : "";
     const label = CLASS_LABELS[m.classification] || m.classification;
-    infoCls.innerHTML = `${iconHtml} <span class="cls-label ${m.classification}">${m.move_number}${m.color === "white" ? "." : "..."} ${escapeHtml(m.san)} — ${label}</span>`;
+    infoCls.innerHTML = `${iconHtml} <span class="cls-label ${m.classification}">${moveNumber(m)}${m.color === "white" ? "." : "..."} ${escapeHtml(m.san)} — ${label}</span>`;
     infoCls.className = "";
     infoCmt.textContent = m.comment || "";
     // Linha sugerida pelo engine.
@@ -1766,12 +1880,14 @@ function goToPly(ply) {
   }
 
   // Lista de lances — destacar ativo.
-  document.querySelectorAll(".move-cell").forEach(c => c.classList.remove("active"));
+  document.querySelector(".move-cell.active")?.classList.remove("active");
+  document.querySelector(".move-cell[aria-current]")?.removeAttribute("aria-current");
   let active = null;
   if (ply > 0) {
     active = document.querySelector(`.move-cell[data-ply="${ply}"]`);
     if (active) {
       active.classList.add("active");
+      active.setAttribute("aria-current", "step");
       // Desktop: lista tem scroll próprio (82vh). Mobile/tablet: lista flui na
       // página (max-height:none) — este bloco vira no-op se não houver overflow.
       const list = document.querySelector(".moves-list");
@@ -1790,6 +1906,7 @@ function goToPly(ply) {
   updateEvalBar(ply);
   renderPlayerBars();
   renderBoardOverlays();
+  updateNavigationControls();
 
   // Mobile: só corrige drift horizontal; não força scroll da página.
   if (isMobileShell()) {
@@ -1799,7 +1916,13 @@ function goToPly(ply) {
   // Dispara análise ao vivo da posição atual (se engine WASM tá pronta E não
   // estamos no meio da análise da partida).
   if (state.engineReady && !state.streaming) {
-    startLiveAnalysis(currentFen());
+    clearTimeout(state.liveTimer);
+    state.liveToken++;
+    state.liveInfo = {};
+    state.engine.cancelAll();
+    renderLivePanel();
+    const fen = currentFen();
+    state.liveTimer = setTimeout(() => startLiveAnalysis(fen), 120);
   }
 }
 
@@ -2009,7 +2132,11 @@ function pgnHash(pgn) {
 }
 
 async function getHistoryEntry(pgnOrKey) {
-  return HistoryStore.get(pgnHash(pgnOrKey));
+  const entry = await HistoryStore.get(pgnHash(pgnOrKey));
+  if (!entry) return null;
+  // Confere o conteúdo também: o ID curto legado pode colidir.
+  const storedKey = entry.cacheKey || historyCacheKey(entry.pgn || "", entry.gameIndex || 0, entry.reviewDepth || 15);
+  return storedKey === pgnOrKey ? entry : null;
 }
 
 async function saveToHistory(pgnOrKey, analysis, meta = {}) {
@@ -2018,6 +2145,7 @@ async function saveToHistory(pgnOrKey, analysis, meta = {}) {
   const sourcePgn = meta.sourcePgn || pgnOrKey;
   await HistoryStore.put({
     id,
+    cacheKey: pgnOrKey,
     pgn: sourcePgn,
     analysis,
     reviewDepth: meta.reviewDepth,
@@ -2093,8 +2221,8 @@ function buildAnnotatedPgn(analysis) {
 
   // Emite em sequência completa: "1. e4 {…} e5 {…} 2. Nf3 …"
   const parts = [];
-  for (const m of analysis.moves) {
-    let token = m.color === "white" ? `${m.move_number}. ${m.san}` : m.san;
+  for (const [index, m] of analysis.moves.entries()) {
+    let token = m.color === "white" ? `${moveNumber(m)}. ${m.san}` : index === 0 ? `${moveNumber(m)}... ${m.san}` : m.san;
 
     const evalStr = formatEvalTag(m);
     const cls = CLASS_LABELS[m.classification] || m.classification || "";
@@ -2141,11 +2269,13 @@ function exportAnnotatedPgn() {
 
 async function shareCurrentPgnLink() {
   const pgn = state.currentPgn || document.getElementById("pgn-input")?.value?.trim();
+  const gameIndex = state.gameIndex;
   if (!pgn) {
     showToast("Nenhuma partida carregada para compartilhar.", "error");
     return;
   }
-  const hash = await encodePgnToHash(pgn);
+  const encoded = await encodePgnToHash(pgn);
+  const hash = encoded + (gameIndex ? `&game=${gameIndex}` : "");
   const url = `${location.origin}${location.pathname}#${hash}`;
   // Atualiza a URL atual sem recarregar.
   try { history.replaceState(null, "", `#${hash}`); } catch {}
@@ -2167,7 +2297,8 @@ async function renderHistory() {
   }
   container.innerHTML = "";
   for (const e of list) {
-    const el = document.createElement("div");
+    const el = document.createElement("button");
+    el.type = "button";
     el.className = "game-item";
     const resParts = String(e.summary.result || "*").split("-");
     el.innerHTML = `

@@ -27,3 +27,14 @@ node_modules/
 package.json
 package-lock.json
 frontend/styles/
+
+# Artefatos locais de testes e revisão visual não entram na imagem pública
+.playwright-mcp/
+.tmp-*/
+.pytest_cache/
+tests/
+desktop-*.png
+mobile-*.png
+tablet-*.png
+explore-*.png
+docs/

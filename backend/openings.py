@@ -18,9 +18,10 @@ isso, e por isso "saía do livro" cedo demais).
 from __future__ import annotations
 
 import json
-import os
 import urllib.request
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from threading import Lock
 from typing import Optional, Dict, Tuple
 
 import chess
@@ -44,6 +45,7 @@ _MAX_PLIES_INDEXED = 0  # linha mais longa indexada — limita a varredura na de
 # ~3700 PGNs) custa ~2s; ler este JSON custa ~50ms. É gerado no build do Docker
 # (prewarm) e regenerado em runtime se faltar ou se os TSVs forem mais novos.
 _INDEX_CACHE = DATA_DIR / "openings_index.json"
+_LOAD_LOCK = Lock()
 
 
 def _download_if_missing() -> None:
@@ -111,18 +113,29 @@ def _try_load_cache() -> bool:
 
 def _save_cache() -> None:
     """Salva o índice construído em disco pra acelerar próximas inicializações."""
+    temporary = None
     try:
         data = {
             "max_plies": _MAX_PLIES_INDEXED,
             "index": {k: [v[0], v[1]] for k, v in _OPENING_INDEX.items()},
         }
-        with open(_INDEX_CACHE, "w", encoding="utf-8") as f:
+        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=DATA_DIR, delete=False) as f:
+            temporary = Path(f.name)
             json.dump(data, f, ensure_ascii=False)
+        temporary.replace(_INDEX_CACHE)
     except Exception as e:
         print(f"[openings] falha ao salvar cache: {e}")
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _load() -> None:
+    with _LOAD_LOCK:
+        _load_unlocked()
+
+
+def _load_unlocked() -> None:
     """Carrega o índice em memória. Chamado lazy na primeira consulta (ou no
     startup). Usa o cache em disco quando disponível; senão constrói do TSV."""
     global _LOADED, _MAX_PLIES_INDEXED

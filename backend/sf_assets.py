@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import urllib.request
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from threading import Lock
 from typing import Optional
 
 
@@ -91,6 +93,22 @@ REQUIRED_COMBOS = [
     ["stockfish-18-asm.js"],
 ]
 
+# Um download por arquivo/processo; escrita atômica protege também leitores de
+# outros workers, que nunca observam um WASM parcialmente gravado.
+_DOWNLOAD_LOCKS = {filename: Lock() for filename in ASSET_URLS}
+
+
+def _cached_asset(filename: str) -> Optional[Path]:
+    target = DATA_DIR / filename
+    try:
+        if target.stat().st_size <= MIN_SIZE_BYTES.get(filename, 10_000):
+            return None
+        with target.open("rb") as asset:
+            valid, _ = _looks_valid(filename, asset.read(64))
+        return target if valid else None
+    except OSError:
+        return None
+
 
 def _looks_valid(filename: str, data: bytes) -> tuple[bool, str]:
     """
@@ -118,12 +136,22 @@ def ensure_downloaded(filename: str) -> Optional[Path]:
     """
     if filename not in ASSET_URLS:
         return None
+    cached = _cached_asset(filename)
+    if cached is not None:
+        return cached
+    with _DOWNLOAD_LOCKS[filename]:
+        cached = _cached_asset(filename)
+        if cached is not None:
+            return cached
+        return _download_asset(filename)
+
+
+def _download_asset(filename: str) -> Optional[Path]:
     target = DATA_DIR / filename
     min_size = MIN_SIZE_BYTES.get(filename, 10_000)
-    if target.exists() and target.stat().st_size > min_size:
-        return target
 
     for url in ASSET_URLS[filename]:
+        temporary = None
         try:
             print(f"[sf_assets] baixando {filename} de {url} ...")
             req = urllib.request.Request(url, headers={"User-Agent": "chess-review/0.4"})
@@ -139,26 +167,31 @@ def ensure_downloaded(filename: str) -> Optional[Path]:
                 print(f"[sf_assets] download inválido ({reason}), tentando próxima URL")
                 continue
 
-            target.write_bytes(data)
+            with NamedTemporaryFile(dir=DATA_DIR, suffix=".download", delete=False) as output:
+                temporary = Path(output.name)
+                output.write(data)
+            temporary.replace(target)
             print(f"[sf_assets] OK ({len(data)} bytes)")
             return target
         except Exception as e:
             print(f"[sf_assets] falha {url}: {e}")
-            try: target.unlink(missing_ok=True)
-            except: pass
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     return None
 
 
-def best_available() -> Optional[str]:
+def best_available(*, download: bool = True) -> Optional[str]:
     """
     Retorna o NOME do arquivo .js que o frontend deve usar (já baixado).
-    Tenta combos em ordem de preferência. Faz download na hora se necessário.
+    Tenta combos em ordem de preferência. Health/home usam download=False para
+    não depender da rede; o navegador solicita /sf/ e baixa sob demanda.
     """
     for combo in REQUIRED_COMBOS:
         ok = True
         for fn in combo:
-            if ensure_downloaded(fn) is None:
+            if (ensure_downloaded(fn) if download else _cached_asset(fn)) is None:
                 ok = False
                 break
         if ok:

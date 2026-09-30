@@ -474,3 +474,89 @@ test("analyzeGame: opts.refine=false mantém a classificação da fase 1", async
   assert.equal(result.moves[2].classification, "blunder");
   assert.ok(!pool.calls.some((c) => c.depth > 15), "não deveria haver análise funda");
 });
+
+test("analyzeGame: abort já solicitado impede iniciar a análise", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const pool = { analyzeAll() { assert.fail("não deve chamar a engine"); } };
+  await assert.rejects(A.analyzeGame(fakeGame(), pool, { signal: controller.signal }), { name: "AbortError" });
+});
+
+test("analyzeGame: abort durante streaming cancela o pool e não retorna partida parcial", async () => {
+  const parsed = fakeGame();
+  const pool = fakePool(parsed, 15);
+  const controller = new AbortController();
+  let cancelled = 0, emitted = 0;
+  pool.cancelAll = () => cancelled++;
+  await assert.rejects(A.analyzeGame(parsed, pool, { signal: controller.signal }, () => {
+    emitted++;
+    controller.abort();
+  }), { name: "AbortError" });
+  assert.equal(emitted, 1);
+  assert.equal(cancelled, 1);
+  // O listener da operação terminada não deve continuar ligado ao signal.
+  const completedSignal = new AbortController();
+  await A.analyzeGame(parsed, pool, { signal: completedSignal.signal, refine: false });
+  completedSignal.abort();
+  assert.equal(cancelled, 1);
+});
+
+test("analyzeGame: abort no refinamento interrompe reclassificação e resultado final", async () => {
+  const parsed = fakeGame();
+  const pool = fakePool(parsed, 15);
+  const controller = new AbortController();
+  pool.cancelAll = () => {};
+  await assert.rejects(A.analyzeGame(parsed, pool, {
+    signal: controller.signal,
+    onRefineProgress: () => controller.abort(),
+  }), { name: "AbortError" });
+});
+
+test("analyzeGame: callback fora de ordem mantém todos os lances na sequência", async () => {
+  const parsed = fakeGame();
+  const original = fakePool(parsed, 15);
+  const pool = { async analyzeAll(fens, optsFor, onResult) {
+    const results = [];
+    await original.analyzeAll(fens, optsFor, (i, info) => results.push([i, info]));
+    for (const [i, info] of results.reverse()) onResult(i, info);
+  } };
+  const emitted = [];
+  const result = await A.analyzeGame(parsed, pool, { refine: false }, (move) => emitted.push(move.ply));
+  assert.deepEqual(emitted, [1, 2, 3, 4]);
+  assert.deepEqual(result.moves.map((move) => move.ply), emitted);
+});
+
+test("analyzeGame: avaliação vazia ou NaN falha em vez de fabricar eval zero", async () => {
+  for (const info of [{}, { 1: { score: { type: "cp", value: NaN } } }]) {
+    const pool = { async analyzeAll(fens, optsFor, onResult) { onResult(0, info); } };
+    await assert.rejects(A.analyzeGame(fakeGame(), pool, { refine: false }), /avaliação inválida/);
+  }
+});
+
+test("analyzeGame: batch incompleto falha sem persistir só alguns lances", async () => {
+  const parsed = fakeGame();
+  const original = fakePool(parsed, 15);
+  const pool = { async analyzeAll(fens, optsFor, onResult) {
+    await original.analyzeAll(fens, optsFor, (i, info) => { if (i < 3) onResult(i, info); });
+  } };
+  await assert.rejects(A.analyzeGame(parsed, pool, { refine: false }), /todas as posições/);
+});
+
+test("classifyMove: cache de lances é descartado ao terminar cada classificação", () => {
+  const { Chess } = require("./harness.cjs");
+  let generated = 0;
+  global.Chess = function CountingChess(...args) {
+    const chess = new Chess(...args);
+    const moves = chess.moves;
+    chess.moves = (...moveArgs) => { generated++; return moves(...moveArgs); };
+    return chess;
+  };
+  try {
+    const fixture = CLASSIFICATION_CASES.find((c) => c.expected === "brilliant");
+    assert.equal(A.classifyMove(fixture.move, fixture.prev), "brilliant");
+    const first = generated;
+    assert.equal(A.classifyMove(fixture.move, fixture.prev), "brilliant");
+    assert.equal(generated, first * 2, "a classificação seguinte deve usar um cache novo");
+    assert.ok(first < 100, `regressão: ${first} gerações de lances para um sacrifício`);
+  } finally { global.Chess = Chess; }
+});

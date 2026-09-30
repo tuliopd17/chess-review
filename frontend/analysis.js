@@ -605,16 +605,26 @@
   // Lances que CAPTURAM a peça em `piece.square` (diretos, sem baterias).
   // Inclui o rei inimigo adjacente mesmo quando a captura seria ilegal (peça
   // defendida) — equivalente ao `.attackers()` do chess.js moderno.
+  // Gerar todos os lances verbose inclui calcular SAN/xeque. Reusar o mesmo
+  // snapshot por FEN evita repetir essa operação para cada peça/raio-X. O cache
+  // existe apenas durante UMA classificação e é descartado ao final.
+  let classificationMoves = null;
   function directAttackingMoves(fen, piece) {
     const oppColor = piece.color === "w" ? "b" : "w";
-    let b;
-    try { b = new Chess(fenToMove(fen, oppColor)); } catch (e) { return []; }
+    const calibrated = fenToMove(fen, oppColor);
+    let snapshot = classificationMoves && classificationMoves.get(calibrated);
+    if (!snapshot) {
+      let b;
+      try { b = new Chess(calibrated); } catch (e) { return []; }
+      snapshot = { moves: b.moves({ verbose: true }), king: findKingSquare(b, oppColor) };
+      if (classificationMoves) classificationMoves.set(calibrated, snapshot);
+    }
     const attacks = [];
-    for (const mv of b.moves({ verbose: true })) {
+    for (const mv of snapshot.moves) {
       if (getCaptureSquare(mv) === piece.square) attacks.push(toRawMove(mv));
     }
     if (!attacks.some((a) => a.piece === "k")) {
-      const kingSq = findKingSquare(b, oppColor);
+      const kingSq = snapshot.king;
       if (kingSq && isAdjacent(kingSq, piece.square)) {
         attacks.push({ piece: "k", color: oppColor, from: kingSq, to: piece.square });
       }
@@ -686,6 +696,12 @@
   // A peça está segura? (heurística de trocas do wintrchess)
   function isPieceSafe(fen, piece, playedMove) {
     const direct = directAttackingMoves(fen, piece);
+    if (!direct.length) return true;
+    const decimalSacrifice = playedMove && playedMove.captured
+      && piece.type === "r" && PIECE_VAL[playedMove.captured] === 3;
+    // A exceção torre-por-menor precisa dos defensores; os demais ataques
+    // mais baratos já provam insegurança sem expandir todas as baterias.
+    if (!decimalSacrifice && direct.some((a) => PIECE_VAL[a.piece] < PIECE_VAL[piece.type])) return false;
     const attackers = getAttackingMoves(fen, piece);
     const defenders = getDefendingMoves(fen, piece);
 
@@ -799,6 +815,7 @@
     try { cb = new Chess(calibrated); } catch (e) { return false; }
     const calibratedFen = cb.fen();
     const standingSafe = isPieceSafe(calibratedFen, piece);
+    if (standingSafe) return false;
     const escapes = cb.moves({ square: piece.square, verbose: true });
     const allUnsafe = escapes.every((mv) => {
       if (moveCreatesGreaterThreat(calibratedFen, piece, toRawMove(mv))) return true;
@@ -839,6 +856,9 @@
     if (!isMoveCriticalCandidate(move)) return false;
     // Achar lances quando você TEM mate forçado não é crítico.
     if (isMateCp(move.eval_after_cp) && move.eval_after_cp > 0) return false;
+    if (move.second_best_eval_cp == null || !(expectedPointsLoss(
+      move.best_eval_cp, move.second_best_eval_cp, winGradientForRating(move.player_rating_cc)
+    ) >= 0.1)) return false;
 
     const played = replayMove(move);
     if (!played) return false;
@@ -853,12 +873,7 @@
       if (!isPieceSafe(move.fen_before, capPiece)) return false;
     }
 
-    if (move.second_best_eval_cp == null) return false;
-    return expectedPointsLoss(
-      move.best_eval_cp,
-      move.second_best_eval_cp,
-      winGradientForRating(move.player_rating_cc)
-    ) >= 0.1;
+    return true;
   }
 
   // "Lance Brilhante": sacrifício real — o lance deixa (de propósito) peça de
@@ -872,8 +887,9 @@
     if (played.promotion) return false; // promoção não pode ser brilhante
 
     const mover = played.color;
-    const prevUnsafe = getUnsafePieces(move.fen_before, mover);
     const unsafe = getUnsafePieces(move.fen_after, mover, played);
+    if (!unsafe.length) return false;
+    const prevUnsafe = getUnsafePieces(move.fen_before, mover);
 
     let curBoard;
     try { curBoard = new Chess(move.fen_after); } catch (e) { return false; }
@@ -1004,7 +1020,14 @@
     return "blunder";
   }
 
-  function classifyMove(move, prevMove) { // prevMove mantido por compat de API
+  function classifyMove(move, prevMove) {
+    const previousCache = classificationMoves;
+    classificationMoves = new Map();
+    try { return classifyMoveCore(move, prevMove); }
+    finally { classificationMoves = previousCache; }
+  }
+
+  function classifyMoveCore(move, prevMove) { // prevMove mantido por compat de API
     if (move.in_book) return "book";
     if (move.is_only_move) return "forced";
     if (move.is_checkmate) return "best"; // deu mate: melhor por definição
@@ -1386,6 +1409,23 @@
    * @returns {Promise<object>} payload completo com stats
    */
   async function analyzeGame(parsed, pool, opts, onMove) {
+    opts = opts || {};
+    const signal = opts.signal;
+    const abortPool = () => { if (typeof pool.cancelAll === "function") pool.cancelAll(); };
+    if (signal) signal.addEventListener("abort", abortPool, { once: true });
+    try { return await analyzeGameCore(parsed, pool, opts, onMove); }
+    finally { if (signal) signal.removeEventListener("abort", abortPool); }
+  }
+
+  async function analyzeGameCore(parsed, pool, opts, onMove) {
+    const signal = opts.signal;
+    const checkAbort = () => {
+      if (!signal || !signal.aborted) return;
+      const error = new Error("Análise cancelada");
+      error.name = "AbortError";
+      throw error;
+    };
+    checkAbort();
     const depth = opts.depth || 15;
     const multipv = 2; // precisamos do 2º melhor pra detectar Great
     const moves = parsed.moves;
@@ -1420,16 +1460,23 @@
       function parsePosInfo(info) {
         const best = info && info[1];
         const second = info && info[2];
+        if (!best || !best.score || !["cp", "mate"].includes(best.score.type)
+            || !Number.isFinite(best.score.value)) {
+          throw new Error("Stockfish retornou uma avaliação inválida. Tente analisar novamente.");
+        }
         return {
           bestEvalCp: scoreToCp(best?.score),
           bestUci: best?.pv?.[0] || "",
           bestPvUci: (best?.pv || []).slice(0, 8),
-          secondEvalCp: second ? scoreToCp(second.score) : null,
+          secondEvalCp: second && second.score
+            && ["cp", "mate"].includes(second.score.type) && Number.isFinite(second.score.value)
+            ? scoreToCp(second.score) : null,
           wdl: best?.wdl || null, // per-mille, POV do lado a mover (UCI_ShowWDL)
         };
       }
 
       const posResult = new Array(N + 1).fill(undefined);
+      const onlyMove = new Array(N);
       let flushed = 0;
 
       // Monta o lance enriquecido i a partir do posResult ATUAL. Determinístico
@@ -1456,8 +1503,11 @@
         const netMaterial = moveCaptureVal + lineMaterial(mv.fen_after, refPvUci, pov).delta;
 
         // Único lance legal na posição? (classificação "Forçado" do chess.com).
-        let isOnlyMove = false;
-        try { isOnlyMove = new Chess(mv.fen_before).moves().length === 1; } catch (e) {}
+        if (onlyMove[i] === undefined) {
+          onlyMove[i] = false;
+          try { onlyMove[i] = new Chess(mv.fen_before).moves().length === 1; } catch (e) {}
+        }
+        const isOnlyMove = onlyMove[i];
 
         // WDL da posição resultante, POV das brancas. Vem do engine quando o
         // build reporta (UCI_ShowWDL); senão, do port JS do modelo do SF18.
@@ -1502,6 +1552,7 @@
       // prontas (a posição i e a i+1). As posições podem terminar fora de ordem
       // por causa do pool; o flush mantém a UI em ordem.
       function flush() {
+        checkAbort();
         while (flushed < N && posResult[flushed] && posResult[flushed + 1]) {
           const i = flushed;
           const enriched = buildEnriched(i);
@@ -1509,22 +1560,25 @@
           enriched.comment = generateComment(enriched, opening);
           collected.push(enriched);
           if (onMove) onMove(enriched, i, N);
+          checkAbort();
           flushed++;
         }
       }
 
-      const onResult = (i, info) => { posResult[i] = parsePosInfo(info); flush(); };
+      const onResult = (i, info) => { checkAbort(); posResult[i] = parsePosInfo(info); flush(); };
 
       if (typeof pool.analyzeAll === "function") {
         await pool.analyzeAll(positions, optsFor, onResult);
       } else {
         // Fallback serial (BrowserEngine único).
         for (let i = 0; i < positions.length; i++) {
+          checkAbort();
           const info = await pool.analyzeOnce(positions[i], optsFor(i));
           onResult(i, info);
         }
       }
       flush(); // garante que tudo foi emitido
+      if (flushed !== N) throw new Error("Análise interrompida antes de avaliar todas as posições.");
 
       // ---- Fase 2: confirmação em profundidade dos lances críticos ----
       //
@@ -1566,6 +1620,7 @@
           });
           let refined = 0;
           const onDeep = (j, info) => {
+            checkAbort();
             // Só substitui se a análise funda veio válida; senão fica a rasa.
             if (info && info[1] && info[1].score) posResult[posIdx[j]] = parsePosInfo(info);
             refined++;
@@ -1577,12 +1632,14 @@
             await pool.analyzeAll(subset, deepOptsFor, onDeep);
           } else {
             for (let j = 0; j < subset.length; j++) {
+              checkAbort();
               onDeep(j, await pool.analyzeOnce(subset[j], deepOptsFor(j)));
             }
           }
 
           // Reconstrói todo lance cuja posição "antes" OU "depois" mudou.
           for (let i = 0; i < N; i++) {
+            checkAbort();
             if (!posSet.has(i) && !posSet.has(i + 1)) continue;
             const enriched = buildEnriched(i);
             enriched.classification = classifyMove(enriched, collected[i - 1] || null);

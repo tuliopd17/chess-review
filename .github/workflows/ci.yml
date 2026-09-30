@@ -8,7 +8,7 @@ on:
 
 jobs:
   frontend-tests:
-    name: Testes do frontend (analysis.js)
+    name: Testes do frontend (análise, engine e interface)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +44,8 @@ jobs:
         with:
           node-version: "20"
       - name: Instala Tailwind
-        run: npm install
+        run: npm ci
       - name: Compila o CSS
         run: npm run build:css
+      - name: Confere CSS commitado
+        run: git diff --exit-code -- frontend/tw.css
